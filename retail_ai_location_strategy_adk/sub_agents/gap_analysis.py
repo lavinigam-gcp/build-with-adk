@@ -20,8 +20,9 @@ to calculate saturation indices, viability scores, and zone rankings.
 
 from google.adk.agents import LlmAgent
 from google.adk.code_executors import BuiltInCodeExecutor
+from google.genai import types
 
-from ..config import FAST_MODEL
+from ..config import RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 from ..callbacks import before_gap_analysis, after_gap_analysis
 
 
@@ -118,6 +119,14 @@ gap_analysis_agent = LlmAgent(
     model="gemini-2.5-pro",
     description="Performs quantitative gap analysis using Python code execution for zone rankings and viability scores",
     instruction=GAP_ANALYSIS_INSTRUCTION,
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=RETRY_INITIAL_DELAY,
+                attempts=RETRY_ATTEMPTS,
+            ),
+        ),
+    ),
     code_executor=BuiltInCodeExecutor(),
     output_key="gap_analysis",
     before_agent_callback=before_gap_analysis,

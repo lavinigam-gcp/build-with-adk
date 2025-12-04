@@ -33,5 +33,12 @@ FAST_MODEL = "gemini-3-pro-preview"
 PRO_MODEL = "gemini-3-pro-preview"
 IMAGE_MODEL = "gemini-3-pro-image-preview"
 
+# Retry Configuration (for handling model overload errors)
+# Note: HttpRetryOptions may only retry on certain HTTP codes (429, etc.)
+# For persistent 503 errors, consider using a different model or waiting for API availability
+RETRY_INITIAL_DELAY = 5  # seconds - longer wait for overloaded models
+RETRY_ATTEMPTS = 5  # More attempts for transient errors
+RETRY_MAX_DELAY = 60  # seconds
+
 # App Configuration
 APP_NAME = "retail_location_strategy"

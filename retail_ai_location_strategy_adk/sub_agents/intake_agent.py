@@ -27,7 +27,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.genai import types
 from pydantic import BaseModel, Field
 
-from ..config import FAST_MODEL
+from ..config import FAST_MODEL, RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 
 
 class UserRequest(BaseModel):
@@ -101,6 +101,14 @@ intake_agent = LlmAgent(
     model=FAST_MODEL,
     description="Parses user request to extract target location and business type",
     instruction=INTAKE_INSTRUCTION,
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=RETRY_INITIAL_DELAY,
+                attempts=RETRY_ATTEMPTS,
+            ),
+        ),
+    ),
     output_schema=UserRequest,
     output_key="parsed_request",
     after_agent_callback=after_intake,

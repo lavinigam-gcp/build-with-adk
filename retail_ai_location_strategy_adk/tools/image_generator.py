@@ -26,6 +26,8 @@ import base64
 import logging
 from google.adk.tools import ToolContext
 from google.genai import types
+from google.genai.errors import ServerError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger("LocationStrategyPipeline")
 
@@ -79,14 +81,27 @@ DESIGN REQUIREMENTS:
 Create an infographic that a business executive would use in a board presentation.
 """
 
-        # Generate the image using Gemini 3 Pro Image model
-        response = client.models.generate_content(
-            model="gemini-3-pro-image-preview",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
+        # Retry wrapper for handling model overload errors
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            retry=retry_if_exception_type(ServerError),
+            before_sleep=lambda retry_state: logger.warning(
+                f"Gemini API error, retrying in {retry_state.next_action.sleep} seconds... "
+                f"(attempt {retry_state.attempt_number}/3)"
             ),
         )
+        def generate_with_retry():
+            return client.models.generate_content(
+                model="gemini-3-pro-image-preview",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["TEXT", "IMAGE"],
+                ),
+            )
+
+        # Generate the image using Gemini 3 Pro Image model
+        response = generate_with_retry()
 
         # Check for successful generation
         if response.candidates and len(response.candidates) > 0:

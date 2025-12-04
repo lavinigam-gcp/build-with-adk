@@ -23,6 +23,8 @@ import logging
 from datetime import datetime
 from google.adk.tools import ToolContext
 from google.genai import types
+from google.genai.errors import ServerError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger("LocationStrategyPipeline")
 
@@ -141,17 +143,29 @@ Current date: {current_date}
 
         logger.info("Generating HTML report using Gemini...")
 
+        # Retry wrapper for handling model overload errors
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            retry=retry_if_exception_type(ServerError),
+            before_sleep=lambda retry_state: logger.warning(
+                f"Gemini API error, retrying in {retry_state.next_action.sleep} seconds... "
+                f"(attempt {retry_state.attempt_number}/3)"
+            ),
+        )
+        def generate_with_retry():
+            return client.models.generate_content(
+                model="gemini-3-pro-preview",
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=1.0),
+            )
+
         # Direct text generation (NOT code execution)
         # Same as original notebook: types.GenerateContentConfig(temperature=1.0)
-        response = client.models.generate_content(
-            model="gemini-3-pro-preview",
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=1.0),
-        )
+        response = generate_with_retry()
 
         # Extract HTML from response.text
         html_code = response.text
-        print("HTML CODE: ", html_code)
         # Strip markdown code fences if present
         if html_code.startswith("```"):
             # Remove opening fence (```html or ```)

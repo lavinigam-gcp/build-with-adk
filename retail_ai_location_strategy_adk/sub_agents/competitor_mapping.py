@@ -19,8 +19,9 @@ ground-truth data about existing businesses in the target area.
 """
 
 from google.adk.agents import LlmAgent
+from google.genai import types
 
-from ..config import FAST_MODEL
+from ..config import FAST_MODEL, RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 from ..tools import search_places
 from ..callbacks import before_competitor_mapping, after_competitor_mapping
 
@@ -91,6 +92,14 @@ competitor_mapping_agent = LlmAgent(
     model=FAST_MODEL,
     description="Maps competitors using Google Maps Places API for ground-truth competitor data",
     instruction=COMPETITOR_MAPPING_INSTRUCTION,
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=RETRY_INITIAL_DELAY,
+                attempts=RETRY_ATTEMPTS,
+            ),
+        ),
+    ),
     tools=[search_places],
     output_key="competitor_analysis",
     before_agent_callback=before_competitor_mapping,

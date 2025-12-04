@@ -20,8 +20,9 @@ It researches demographics, market trends, and commercial viability.
 
 from google.adk.agents import LlmAgent
 from google.adk.tools import google_search
+from google.genai import types
 
-from ..config import FAST_MODEL
+from ..config import FAST_MODEL, RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 from ..callbacks import before_market_research, after_market_research
 
 
@@ -76,6 +77,14 @@ market_research_agent = LlmAgent(
     model=FAST_MODEL,
     description="Researches market viability using Google Search for real-time demographics, trends, and commercial data",
     instruction=MARKET_RESEARCH_INSTRUCTION,
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=RETRY_INITIAL_DELAY,
+                attempts=RETRY_ATTEMPTS,
+            ),
+        ),
+    ),
     tools=[google_search],
     output_key="market_research_findings",
     before_agent_callback=before_market_research,

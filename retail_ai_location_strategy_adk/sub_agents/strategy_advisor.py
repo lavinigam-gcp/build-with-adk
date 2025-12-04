@@ -20,9 +20,10 @@ extended reasoning (thinking mode) and outputs a structured JSON report.
 
 from google.adk.agents import LlmAgent
 from google.adk.planners import BuiltInPlanner
+from google.genai import types
 from google.genai.types import ThinkingConfig
 
-from ..config import PRO_MODEL
+from ..config import PRO_MODEL, RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 from ..schemas import LocationIntelligenceReport
 from ..callbacks import before_strategy_advisor, after_strategy_advisor
 
@@ -99,6 +100,14 @@ strategy_advisor_agent = LlmAgent(
     model=PRO_MODEL,
     description="Synthesizes findings into strategic recommendations using extended reasoning and structured output",
     instruction=STRATEGY_ADVISOR_INSTRUCTION,
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=RETRY_INITIAL_DELAY,
+                attempts=RETRY_ATTEMPTS,
+            ),
+        ),
+    ),
     planner=BuiltInPlanner(
         thinking_config=ThinkingConfig(
             include_thoughts=False,  # Must be False when using output_schema

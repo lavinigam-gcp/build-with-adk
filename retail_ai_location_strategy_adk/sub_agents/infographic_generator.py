@@ -19,8 +19,9 @@ capabilities to provide an executive-ready visual summary of the analysis.
 """
 
 from google.adk.agents import LlmAgent
+from google.genai import types
 
-from ..config import FAST_MODEL
+from ..config import FAST_MODEL, RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 from ..tools import generate_infographic
 from ..callbacks import before_infographic_generator, after_infographic_generator
 
@@ -102,6 +103,14 @@ infographic_generator_agent = LlmAgent(
     model=FAST_MODEL,
     description="Generates visual infographic summary using Gemini image generation",
     instruction=INFOGRAPHIC_GENERATOR_INSTRUCTION,
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=RETRY_INITIAL_DELAY,
+                attempts=RETRY_ATTEMPTS,
+            ),
+        ),
+    ),
     tools=[generate_infographic],
     output_key="infographic_result",
     before_agent_callback=before_infographic_generator,

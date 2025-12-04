@@ -23,8 +23,9 @@ The tool handles:
 """
 
 from google.adk.agents import LlmAgent
+from google.genai import types
 
-from ..config import FAST_MODEL
+from ..config import FAST_MODEL, RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 from ..tools import generate_html_report
 from ..callbacks import before_report_generator, after_report_generator
 
@@ -74,6 +75,14 @@ report_generator_agent = LlmAgent(
     model=FAST_MODEL,
     description="Generates professional McKinsey/BCG-style HTML executive reports using the generate_html_report tool",
     instruction=REPORT_GENERATOR_INSTRUCTION,
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=RETRY_INITIAL_DELAY,
+                attempts=RETRY_ATTEMPTS,
+            ),
+        ),
+    ),
     tools=[generate_html_report],
     output_key="report_generation_result",
     before_agent_callback=before_report_generator,
