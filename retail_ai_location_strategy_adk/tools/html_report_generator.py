@@ -26,6 +26,8 @@ from google.genai import types
 from google.genai.errors import ServerError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from ..config import PRO_MODEL
+
 logger = logging.getLogger("LocationStrategyPipeline")
 
 
@@ -155,7 +157,7 @@ Current date: {current_date}
         )
         def generate_with_retry():
             return client.models.generate_content(
-                model="gemini-3-pro-preview",
+                model=PRO_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=1.0),
             )
@@ -186,8 +188,11 @@ Current date: {current_date}
         if not html_code.strip().startswith("<!DOCTYPE") and not html_code.strip().startswith("<html"):
             logger.warning("Generated content may not be valid HTML")
 
-        # Save as artifact
-        html_artifact = types.Part.from_text(text=html_code)
+        # Save as artifact with proper MIME type so it appears in ADK web UI
+        html_artifact = types.Part.from_bytes(
+            data=html_code.encode('utf-8'),
+            mime_type="text/html"
+        )
         artifact_filename = "executive_report.html"
 
         version = await tool_context.save_artifact(

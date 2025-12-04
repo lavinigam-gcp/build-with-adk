@@ -180,7 +180,10 @@ def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.
                 report_dict = report
 
             json_str = json.dumps(report_dict, indent=2, default=str)
-            json_artifact = types.Part.from_text(text=json_str)
+            json_artifact = types.Part.from_bytes(
+                data=json_str.encode('utf-8'),
+                mime_type="application/json"
+            )
             callback_context.save_artifact("intelligence_report.json", json_artifact)
             logger.info("  Saved artifact: intelligence_report.json")
         except Exception as e:

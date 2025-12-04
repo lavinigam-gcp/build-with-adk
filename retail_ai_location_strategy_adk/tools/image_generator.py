@@ -29,6 +29,8 @@ from google.genai import types
 from google.genai.errors import ServerError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from ..config import IMAGE_MODEL
+
 logger = logging.getLogger("LocationStrategyPipeline")
 
 
@@ -93,7 +95,7 @@ Create an infographic that a business executive would use in a board presentatio
         )
         def generate_with_retry():
             return client.models.generate_content(
-                model="gemini-3-pro-image-preview",
+                model=IMAGE_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_modalities=["TEXT", "IMAGE"],

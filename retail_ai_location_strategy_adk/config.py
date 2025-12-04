@@ -29,9 +29,27 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 MAPS_API_KEY = os.environ.get("MAPS_API_KEY", "")
 
 # Model Configuration
-FAST_MODEL = "gemini-3-pro-preview"
-PRO_MODEL = "gemini-3-pro-preview"
+# ============================================================================
+# Uncomment the model set you want to use. Only one set should be active.
+# ============================================================================
+
+# Option 1: Gemini 3 Pro Preview (latest, may have availability issues)
+# FAST_MODEL = "gemini-3-pro-preview"
+# PRO_MODEL = "gemini-3-pro-preview"
+# CODE_EXEC_MODEL = "gemini-2.5-pro"  # Code execution requires 2.5-pro or higher
 IMAGE_MODEL = "gemini-3-pro-image-preview"
+
+# Option 2: Gemini 2.5 Pro (stable, good for production)
+FAST_MODEL = "gemini-2.5-pro"
+PRO_MODEL = "gemini-2.5-pro"
+CODE_EXEC_MODEL = "gemini-2.5-pro"
+# IMAGE_MODEL = "gemini-2.0-flash-exp"  # 2.5 doesn't have native image gen
+
+# Option 3: Gemini 2.5 Flash (fastest, lowest cost)
+# FAST_MODEL = "gemini-2.5-flash"
+# PRO_MODEL = "gemini-2.5-flash"
+# CODE_EXEC_MODEL = "gemini-2.5-flash"
+# IMAGE_MODEL = "gemini-2.0-flash-exp"  # Flash image generation
 
 # Retry Configuration (for handling model overload errors)
 # Note: HttpRetryOptions may only retry on certain HTTP codes (429, etc.)

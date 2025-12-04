@@ -22,7 +22,7 @@ from google.adk.agents import LlmAgent
 from google.adk.code_executors import BuiltInCodeExecutor
 from google.genai import types
 
-from ..config import RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
+from ..config import CODE_EXEC_MODEL, RETRY_INITIAL_DELAY, RETRY_ATTEMPTS
 from ..callbacks import before_gap_analysis, after_gap_analysis
 
 
@@ -116,7 +116,7 @@ Execute the code and provide actionable strategic recommendations based on the q
 
 gap_analysis_agent = LlmAgent(
     name="GapAnalysisAgent",
-    model="gemini-2.5-pro",
+    model=CODE_EXEC_MODEL,
     description="Performs quantitative gap analysis using Python code execution for zone rankings and viability scores",
     instruction=GAP_ANALYSIS_INSTRUCTION,
     generate_content_config=types.GenerateContentConfig(
