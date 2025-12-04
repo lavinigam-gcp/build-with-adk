@@ -194,20 +194,15 @@ def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.
 
 
 def after_report_generator(callback_context: CallbackContext) -> Optional[types.Content]:
-    """Log completion and save HTML artifact."""
-    html = callback_context.state.get("html_report", "")
-    html_len = len(html) if isinstance(html, str) else 0
+    """Log completion of report generation.
 
-    logger.info(f"STAGE 4: COMPLETE - HTML report: {html_len} characters")
-
-    # Save HTML artifact
-    if html:
-        try:
-            html_artifact = types.Part.from_text(text=html)
-            callback_context.save_artifact("executive_report.html", html_artifact)
-            logger.info("  Saved artifact: executive_report.html")
-        except Exception as e:
-            logger.warning(f"  Failed to save HTML artifact: {e}")
+    Note: The artifact is now saved directly in the generate_html_report tool
+    using tool_context.save_artifact(). This callback just logs completion.
+    """
+    # The report_generation_result from output_key contains the LLM's text response,
+    # not the tool's return dict. The artifact is saved directly in the tool.
+    logger.info("STAGE 4: COMPLETE - HTML report generation finished")
+    logger.info("  (Artifact saved directly by generate_html_report tool)")
 
     stages = callback_context.state.get("stages_completed", [])
     stages.append("report_generation")

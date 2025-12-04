@@ -15,18 +15,23 @@
 """Report Generator Agent - Part 4 of the Location Strategy Pipeline.
 
 This agent generates a professional HTML executive report from the
-structured LocationIntelligenceReport data.
+structured LocationIntelligenceReport data using the generate_html_report tool.
+
+The tool handles:
+- Calling Gemini to generate 7-slide McKinsey/BCG style HTML
+- Saving the HTML as an artifact for download in adk web
 """
 
 from google.adk.agents import LlmAgent
 
 from ..config import FAST_MODEL
+from ..tools import generate_html_report
 from ..callbacks import before_report_generator, after_report_generator
 
 
-REPORT_GENERATOR_INSTRUCTION = """You are an executive report designer creating premium business intelligence documents.
+REPORT_GENERATOR_INSTRUCTION = """You are an executive report generator for location intelligence analysis.
 
-Your task is to transform the structured location intelligence data into a visually stunning HTML report.
+Your task is to create a professional HTML executive report using the generate_html_report tool.
 
 TARGET LOCATION: {target_location}
 BUSINESS TYPE: {business_type}
@@ -36,71 +41,41 @@ CURRENT DATE: {current_date}
 {strategic_report}
 
 ## Your Mission
-Create a McKinsey/BCG-style executive HTML report that presents the analysis findings professionally.
+Format the strategic report data and call the generate_html_report tool to create a
+McKinsey/BCG-style 7-slide HTML presentation.
 
-## Design Requirements
+## Steps
 
-### Visual Style
-- Modern, clean design with professional color palette
-- Use CSS gradients for headers (dark blue to teal)
-- White cards with subtle shadows for content sections
-- Accent colors: #2C5282 (primary), #38B2AC (accent), #E53E3E (warning)
-- Professional typography (system fonts: -apple-system, BlinkMacSystemFont, Segoe UI)
-- Responsive layout that works on desktop and mobile
+### Step 1: Format the Report Data
+Prepare a comprehensive data summary from the strategic report above, including:
+- Analysis overview (location, business type, date, market validation)
+- Top recommendation details (location, score, opportunity type, strengths, concerns)
+- Competition metrics (total competitors, density, chain dominance, ratings)
+- Market characteristics (population, income, infrastructure, foot traffic, rental costs)
+- Alternative locations (name, score, strength, concern, why not top)
+- Next steps (actionable items)
+- Key insights (strategic observations)
+- Methodology summary
 
-### Structure
-1. **Header Section**
-   - Report title with target location and business type
-   - Analysis date and branding
-   - Executive summary snippet
+### Step 2: Call the Tool
+Call the generate_html_report tool with the formatted report data.
+The tool will:
+- Generate a professional 7-slide HTML report
+- Save it as an artifact named "executive_report.html"
+- Return the status and artifact details
 
-2. **Market Validation Summary**
-   - Quick verdict on market viability
-   - Key statistics in a card grid
-
-3. **Top Recommendation Card**
-   - Location name with overall score (large, prominent)
-   - Opportunity type badge
-   - Strengths list with icons
-   - Concerns list with mitigation strategies
-   - Competition metrics visualization
-   - Market characteristics summary
-   - Next steps checklist
-
-4. **Alternative Locations Section**
-   - Compact cards for each alternative
-   - Score, key strength, key concern
-   - "Why not top" explanation
-
-5. **Key Insights Section**
-   - Strategic insights as bullet points
-   - Methodology summary
-
-6. **Footer**
-   - Disclaimer text
-   - Generation timestamp
-
-### HTML Requirements
-- Complete, standalone HTML document
-- All CSS inline in <style> tag (no external dependencies)
-- Use semantic HTML5 elements
-- Include responsive meta viewport tag
-- Use CSS Grid or Flexbox for layouts
-- Score visualizations using CSS (progress bars or circular indicators)
-- Print-friendly styles
-
-## Output Format
-Return ONLY the complete HTML document, starting with <!DOCTYPE html> and ending with </html>.
-Do not include any markdown formatting or code blocks around the HTML.
-The HTML should be ready to save directly as a .html file and open in a browser.
+### Step 3: Report Result
+After the tool returns, confirm the report was generated successfully.
+If there was an error, report what went wrong.
 """
 
 report_generator_agent = LlmAgent(
     name="ReportGeneratorAgent",
     model=FAST_MODEL,
-    description="Generates professional McKinsey/BCG-style HTML executive reports from structured analysis data",
+    description="Generates professional McKinsey/BCG-style HTML executive reports using the generate_html_report tool",
     instruction=REPORT_GENERATOR_INSTRUCTION,
-    output_key="html_report",
+    tools=[generate_html_report],
+    output_key="report_generation_result",
     before_agent_callback=before_report_generator,
     after_agent_callback=after_report_generator,
 )
