@@ -1,0 +1,30 @@
+[project]
+name = "retail-ai-location-strategy-adk"
+version = "1.0.0"
+description = "Multi-agent AI pipeline for retail site selection using Google ADK"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Lavi Nigam", email = "lavinigam@google.com"},
+    {name = "Deepak Moonat", email = "dmoonat@google.com"},
+]
+keywords = ["adk", "agents", "gemini", "retail", "location-strategy"]
+
+dependencies = [
+    "google-adk>=1.20.0",
+    "google-genai>=1.53.0",
+    "googlemaps>=4.10.0",
+    "pydantic>=2.10.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Repository = "https://github.com/lavinigam-gcp/build-with-adk"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

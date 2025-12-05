@@ -16,38 +16,42 @@ Given a location and business type, this pipeline automatically:
 
 ### Prerequisites
 
-- Python 3.10+
 - [Google AI Studio API key](https://aistudio.google.com/app/apikey)
 - [Google Maps API key](https://console.cloud.google.com/apis/credentials) (with Places API enabled)
 
 ### Setup
 
+**Using [UV](https://docs.astral.sh/uv/) (Recommended)**
+
 ```bash
-# 1. Clone the repository
-git clone https://github.com/anthropics/build-with-adk.git
-cd build-with-adk
+# 1. Clone and enter project
+git clone https://github.com/lavinigam-gcp/build-with-adk.git
+cd build-with-adk/retail_ai_location_strategy_adk
 
-# 2. Navigate to agent folder for setup
-cd retail_ai_location_strategy_adk
+# 2. Configure API keys
+cp .env.example .env
+# Edit .env with your GOOGLE_API_KEY and MAPS_API_KEY
 
-# 3. Create virtual environment
+# 3. Run (auto-installs dependencies)
+uv run adk web
+```
+
+<details>
+<summary>Alternative: Using pip</summary>
+
+```bash
+git clone https://github.com/lavinigam-gcp/build-with-adk.git
+cd build-with-adk/retail_ai_location_strategy_adk
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 4. Install dependencies
 pip install -r requirements.txt
-
-# 5. Configure API keys
 cp .env.example .env
-# Edit .env with your keys:
-#   GOOGLE_API_KEY=your_key
-#   GOOGLE_GENAI_USE_VERTEXAI=FALSE
-#   MAPS_API_KEY=your_maps_key
-
-# 6. Run from parent directory
+# Edit .env with your keys
 cd ..
 adk web
 ```
+
+</details>
 
 Open `http://localhost:8000`, select **retail_ai_location_strategy_adk** from the dropdown, and try one of the examples below.
 
