@@ -34,15 +34,15 @@ MAPS_API_KEY = os.environ.get("MAPS_API_KEY", "")
 # ============================================================================
 
 # Option 1: Gemini 3 Pro Preview (latest, may have availability issues)
-FAST_MODEL = "gemini-3-pro-preview"
-PRO_MODEL = "gemini-3-pro-preview"
-CODE_EXEC_MODEL = "gemini-3-pro-preview"  #"gemini-2.5-pro"  # Code execution requires 2.5-pro or higher
+# FAST_MODEL = "gemini-3-pro-preview"
+# PRO_MODEL = "gemini-3-pro-preview"
+# CODE_EXEC_MODEL = "gemini-3-pro-preview"  #"gemini-2.5-pro"  # Code execution requires 2.5-pro or higher
 IMAGE_MODEL = "gemini-3-pro-image-preview"
 
 # Option 2: Gemini 2.5 Pro (stable, good for production)
-# FAST_MODEL = "gemini-2.5-pro"
-# PRO_MODEL = "gemini-2.5-pro"
-# CODE_EXEC_MODEL = "gemini-2.5-pro"
+FAST_MODEL = "gemini-2.5-pro"
+PRO_MODEL = "gemini-2.5-pro"
+CODE_EXEC_MODEL = "gemini-2.5-pro"
 # IMAGE_MODEL = "gemini-2.0-flash-exp"  # 2.5 doesn't have native image gen
 
 # Option 3: Gemini 2.5 Flash (fastest, lowest cost)

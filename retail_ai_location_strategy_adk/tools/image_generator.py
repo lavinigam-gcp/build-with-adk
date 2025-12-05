@@ -130,6 +130,10 @@ Create an infographic that a business executive would use in a board presentatio
                         )
                         logger.info(f"Saved infographic artifact: {artifact_filename} (version {version})")
 
+                        # Also store base64 in state for AG-UI frontend display
+                        b64_image = base64.b64encode(image_bytes).decode('utf-8')
+                        tool_context.state["infographic_base64"] = f"data:{mime_type};base64,{b64_image}"
+
                         return {
                             "status": "success",
                             "message": f"Infographic generated and saved as artifact '{artifact_filename}'",

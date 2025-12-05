@@ -200,6 +200,9 @@ Current date: {current_date}
             artifact=html_artifact
         )
 
+        # Also store in state for AG-UI frontend display
+        tool_context.state["html_report_content"] = html_code
+
         logger.info(f"Saved HTML report artifact: {artifact_filename} (version {version})")
 
         return {

@@ -71,6 +71,11 @@ def before_competitor_mapping(callback_context: CallbackContext) -> Optional[typ
     callback_context.state["current_date"] = datetime.now().strftime("%Y-%m-%d")
     callback_context.state["pipeline_stage"] = "competitor_mapping"
 
+    # Workaround for AG-UI middleware issue: initialize state variable
+    # The middleware may end agent prematurely after tool calls, preventing output_key from being set
+    if "competitor_analysis" not in callback_context.state:
+        callback_context.state["competitor_analysis"] = "Competitor data being collected via Google Maps API..."
+
     return None
 
 
@@ -84,6 +89,10 @@ def before_gap_analysis(callback_context: CallbackContext) -> Optional[types.Con
     # Set current date for state injection in agent instruction
     callback_context.state["current_date"] = datetime.now().strftime("%Y-%m-%d")
     callback_context.state["pipeline_stage"] = "gap_analysis"
+
+    # Workaround for AG-UI middleware issue: initialize state variable
+    if "gap_analysis" not in callback_context.state:
+        callback_context.state["gap_analysis"] = "Gap analysis being computed..."
 
     return None
 

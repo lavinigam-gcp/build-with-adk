@@ -55,6 +55,29 @@ adk web
 
 Open `http://localhost:8000`, select **retail_ai_location_strategy_adk** from the dropdown, and try one of the examples below.
 
+### Option B: Run with Interactive UI (AG-UI Frontend)
+
+For a richer experience with real-time pipeline visualization:
+
+```bash
+# Terminal 1: Start the backend
+cd frontend/backend
+pip install -r requirements.txt
+python main.py
+# Runs at http://localhost:8000
+
+# Terminal 2: Start the frontend
+cd frontend
+npm install --legacy-peer-deps
+cp .env.local.example .env.local
+npm run dev
+# Runs at http://localhost:3000
+```
+
+Open `http://localhost:3000` to see the interactive dashboard with collapsible pipeline steps, live progress tracking, and downloadable reports.
+
+See [frontend/README.md](frontend/README.md) for detailed frontend documentation.
+
 ### Try These Examples
 
 | Region | Location | Business | Example Prompt |

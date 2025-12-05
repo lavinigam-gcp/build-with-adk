@@ -29,3 +29,14 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Node.js / Frontend
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# Frontend implementation plans (internal use)
+retail_ai_location_strategy_adk/frontend/IMPLEMENTATION_PLAN.md
