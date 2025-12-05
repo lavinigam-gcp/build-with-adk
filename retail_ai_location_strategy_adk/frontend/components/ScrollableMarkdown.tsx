@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ScrollableMarkdownProps {
   content: string;
@@ -27,6 +28,7 @@ export function ScrollableMarkdown({
       >
         <div className="prose prose-sm prose-gray max-w-none">
           <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
             components={{
               // Style headings
               h1: ({ children }) => (
@@ -82,6 +84,33 @@ export function ScrollableMarkdown({
                 <pre className="p-3 bg-gray-50 rounded-lg overflow-x-auto text-xs my-2">
                   {children}
                 </pre>
+              ),
+              // Style tables
+              table: ({ children }) => (
+                <div className="overflow-x-auto my-2">
+                  <table className="min-w-full border-collapse text-xs">
+                    {children}
+                  </table>
+                </div>
+              ),
+              thead: ({ children }) => (
+                <thead className="bg-gray-100">{children}</thead>
+              ),
+              tbody: ({ children }) => <tbody>{children}</tbody>,
+              tr: ({ children }) => (
+                <tr className="border-b border-gray-200 hover:bg-gray-50">
+                  {children}
+                </tr>
+              ),
+              th: ({ children }) => (
+                <th className="px-3 py-2 text-left font-semibold text-gray-800 border-b-2 border-gray-300">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="px-3 py-2 text-gray-600 border-b border-gray-100">
+                  {children}
+                </td>
               ),
             }}
           >

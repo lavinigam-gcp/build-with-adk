@@ -38,10 +38,18 @@ export function StepOutputContent({ stepId, state }: StepOutputContentProps) {
       );
 
     case "competitor_mapping":
+      // Show summary stats at top, then full content if available
+      const summary = summarizeCompetitorAnalysis(state.competitor_analysis, state.strategic_report);
       return (
-        <p className="text-gray-600 text-sm">
-          {summarizeCompetitorAnalysis(state.competitor_analysis, state.strategic_report)}
-        </p>
+        <div className="space-y-2">
+          <p className="text-gray-700 text-sm font-medium">{summary}</p>
+          {state.competitor_analysis && (
+            <ScrollableMarkdown
+              content={state.competitor_analysis}
+              maxHeight="12rem"
+            />
+          )}
+        </div>
       );
 
     case "gap_analysis":
