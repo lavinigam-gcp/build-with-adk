@@ -59,6 +59,11 @@ def after_intake(callback_context: CallbackContext) -> Optional[types.Content]:
         callback_context.state["business_type"] = parsed.business_type
         callback_context.state["additional_context"] = parsed.additional_context or ""
 
+    # Track intake stage completion
+    stages = callback_context.state.get("stages_completed", [])
+    stages.append("intake")
+    callback_context.state["stages_completed"] = stages
+
     # Note: current_date is set in each agent's before_callback to ensure it's always available
     return None
 

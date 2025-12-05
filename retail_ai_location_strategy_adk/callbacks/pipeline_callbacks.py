@@ -55,7 +55,9 @@ def before_market_research(callback_context: CallbackContext) -> Optional[types.
     # Initialize pipeline tracking
     callback_context.state["pipeline_stage"] = "market_research"
     callback_context.state["pipeline_start_time"] = datetime.now().isoformat()
-    callback_context.state["stages_completed"] = []
+    # Don't reset stages_completed - intake stage may already be tracked
+    if "stages_completed" not in callback_context.state:
+        callback_context.state["stages_completed"] = []
 
     return None  # Allow agent to proceed
 
@@ -339,7 +341,7 @@ def after_infographic_generator(callback_context: CallbackContext) -> Optional[t
     logger.info("=" * 60)
     logger.info("PIPELINE COMPLETE")
     logger.info(f"  Stages completed: {stages}")
-    logger.info(f"  Total stages: {len(stages)}/6")
+    logger.info(f"  Total stages: {len(stages)}/7")
     logger.info("=" * 60)
 
     return None

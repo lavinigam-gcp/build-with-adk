@@ -14,18 +14,37 @@
 
 """Configuration for Retail AI Location Strategy ADK Agent.
 
-This agent uses Google AI Studio (API key authentication) instead of Vertex AI.
-Set the following environment variables in your .env file:
+This agent supports both Google AI Studio and Vertex AI authentication modes.
 
+For LOCAL DEVELOPMENT (AI Studio):
     GOOGLE_API_KEY=your_google_api_key
     GOOGLE_GENAI_USE_VERTEXAI=FALSE
+    MAPS_API_KEY=your_maps_api_key
+
+For PRODUCTION DEPLOYMENT (Vertex AI):
+    GOOGLE_CLOUD_PROJECT=your-project-id
+    GOOGLE_CLOUD_LOCATION=us-central1
+    GOOGLE_GENAI_USE_VERTEXAI=TRUE
     MAPS_API_KEY=your_maps_api_key
 """
 
 import os
 
-# API Keys
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+# Detect authentication mode from environment
+USE_VERTEX_AI = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "FALSE").upper() == "TRUE"
+
+# Vertex AI Configuration (for production deployment)
+if USE_VERTEX_AI:
+    GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+    GOOGLE_API_KEY = ""  # Not used in Vertex AI mode
+else:
+    # AI Studio Configuration (for local development)
+    GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+    GOOGLE_CLOUD_PROJECT = ""
+    GOOGLE_CLOUD_LOCATION = ""
+
+# Maps API Key (required for both modes)
 MAPS_API_KEY = os.environ.get("MAPS_API_KEY", "")
 
 # Model Configuration

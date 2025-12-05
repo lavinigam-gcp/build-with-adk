@@ -26,5 +26,21 @@ Repository = "https://github.com/lavinigam-gcp/build-with-adk"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+deployment = [
+    "google-cloud-aiplatform[adk,agent_engines]>=1.79.0",
+    "cloudpickle>=3.0.0",
+]
+
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.agent-starter-pack.settings]
+agent_directory = "retail_ai_location_strategy_adk"
