@@ -33,6 +33,10 @@ A multi-agent AI pipeline for retail site selection, built with [Google Agent De
       <td>🏗️</td>
       <td><strong>Production-Ready:</strong> Deploy to <a href="https://cloud.google.com/run">Cloud Run</a> or <a href="https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview">Vertex AI Agent Engine</a> via <a href="https://goo.gle/agent-starter-pack">Agent Starter Pack</a>.</td>
     </tr>
+    <tr>
+      <td>🧪</td>
+      <td><strong>Tests & Evals:</strong> Unit tests, integration tests with <a href="https://google.github.io/adk-docs/">ADK Runner</a>, and evaluation datasets for measuring agent quality.</td>
+    </tr>
   </tbody>
 </table>
 
@@ -329,52 +333,55 @@ Each agent reads from and writes to a shared session state, enabling seamless da
 
 ```
 retail-ai-location-strategy/
-├── Makefile                          # Build and run commands
-├── pyproject.toml                    # Dependencies and package config
-├── .env.example                      # Environment template
-├── README.md                         # This file
-├── DEVELOPER_GUIDE.md                # Detailed developer documentation
 │
-├── notebook/                         # Original Gemini API notebook
-│   └── retail_ai_location_strategy_gemini_3.ipynb
+├── Makefile                 # Build commands: dev, test, eval, deploy
+├── pyproject.toml           # Python dependencies and package config
+├── README.md                # This file
+├── DEVELOPER_GUIDE.md       # Architecture deep-dive and implementation details
 │
-└── app/                              # Agent package (exported as root_agent)
-    ├── __init__.py                   # Exports root_agent for ADK discovery
-    ├── agent.py                      # SequentialAgent pipeline definition
-    ├── config.py                     # Model selection and retry config
-    ├── .env                          # Environment variables (from .env.example)
-    │
-    ├── sub_agents/                   # 7 specialized agents
-    │   ├── competitor_mapping/
-    │   │   ├── __init__.py
-    │   │   └── agent.py
-    │   ├── gap_analysis/
-    │   │   ├── __init__.py
-    │   │   └── agent.py
-    │   ├── infographic_generator/
-    │   │   ├── __init__.py
-    │   │   └── agent.py
-    │   ├── intake_agent/
-    │   │   ├── __init__.py
-    │   │   └── agent.py
-    │   ├── market_research/
-    │   │   ├── __init__.py
-    │   │   └── agent.py
-    │   ├── report_generator/
-    │   │   ├── __init__.py
-    │   │   └── agent.py
-    │   └── strategy_advisor/
-    │       ├── __init__.py
-    │       └── agent.py
-    │
-    ├── tools/                        # Custom function tools
-    │   ├── places_search.py          # Google Maps Places API
-    │   ├── html_report_generator.py  # Executive report generation
-    │   └── image_generator.py        # Infographic generation
-    │
-    ├── schemas/                      # Pydantic output schemas
-    ├── callbacks/                    # Pipeline lifecycle callbacks
-    └── frontend/                     # AG-UI interactive dashboard
+├── app/                     # Main agent package (ADK discovers root_agent here)
+│   ├── __init__.py          # Exports root_agent for ADK CLI
+│   ├── agent.py             # SequentialAgent pipeline orchestrating 7 sub-agents
+│   ├── config.py            # Model selection (Gemini 2.5/3) and retry settings
+│   ├── .env                 # API keys (create from .env.example)
+│   │
+│   ├── sub_agents/          # 7 specialized agents in execution order
+│   │   ├── intake_agent/    # Stage 0: Parse user request → target_location, business_type
+│   │   ├── market_research/ # Stage 1: Google Search for demographics and trends
+│   │   ├── competitor_mapping/  # Stage 2A: Google Maps Places API for competitors
+│   │   ├── gap_analysis/    # Stage 2B: Python code execution for viability scores
+│   │   ├── strategy_advisor/    # Stage 3: Extended reasoning for recommendations
+│   │   ├── report_generator/    # Stage 4A: HTML executive report generation
+│   │   └── infographic_generator/  # Stage 4B: Gemini image generation
+│   │
+│   ├── tools/               # Custom function tools
+│   │   ├── places_search.py         # Google Maps Places API wrapper
+│   │   ├── html_report_generator.py # Builds styled HTML reports
+│   │   └── image_generator.py       # Gemini native image generation
+│   │
+│   ├── schemas/             # Pydantic models for structured output
+│   │   └── report_schema.py # LocationIntelligenceReport schema
+│   │
+│   ├── callbacks/           # Pipeline lifecycle hooks
+│   │   └── pipeline_callbacks.py    # Logging and state extraction
+│   │
+│   └── frontend/            # Optional AG-UI dashboard (Next.js + CopilotKit)
+│       ├── backend/         # FastAPI server bridging ADK ↔ AG-UI
+│       └── src/             # React components for pipeline visualization
+│
+├── tests/                   # Testing infrastructure
+│   ├── README.md            # Comprehensive testing guide
+│   ├── conftest.py          # Shared pytest fixtures
+│   ├── unit/                # Fast tests, no API calls (~2 seconds)
+│   │   └── test_schemas.py  # Pydantic schema validation
+│   ├── integration/         # Real API tests (~2-5 minutes)
+│   │   └── test_agents.py   # Individual agent tests using Runner
+│   └── evalsets/            # ADK evaluation datasets
+│       ├── intake.evalset.json   # IntakeAgent parsing accuracy
+│       └── pipeline.evalset.json # Full pipeline quality measurement
+│
+└── notebook/                # Original prototype
+    └── retail_ai_location_strategy_gemini_3.ipynb
 ```
 
 ---
