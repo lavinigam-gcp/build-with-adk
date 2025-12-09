@@ -138,9 +138,12 @@ Contributions are welcome! If you have a design pattern or example that would he
 
 ---
 
-## Authors
+## Author
 
-- [Lavi Nigam](https://github.com/lavinigam-gcp)
+[Lavi Nigam](https://github.com/lavinigam-gcp)
+
+### Collaborators
+
 - [Deepak Moonat](https://github.com/dmoonat)
 
 ---
