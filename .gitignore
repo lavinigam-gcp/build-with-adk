@@ -10,6 +10,9 @@
 # Docs folder
 retail-ai-location-strategy/.docs/
 
+# Blog implementation plan (internal tracking)
+retail-ai-location-strategy/blog/implementation_plan.md
+
 # Python
 __pycache__/
 *.py[cod]

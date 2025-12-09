@@ -1,0 +1,550 @@
+{
+  "style_guide": {
+    "design": "clean, modern, professional software architecture diagram",
+    "color_scheme": {
+      "google_blue": "#4285F4",
+      "google_red": "#EA4335",
+      "google_yellow": "#FBBC05",
+      "google_green": "#34A853",
+      "background": "#FFFFFF"
+    },
+    "aesthetic": "minimalist, vector-style icons, clear hierarchy, no 3D effects",
+    "font": "clean sans-serif",
+    "branding": {
+      "logo": "Google ADK",
+      "powered_by": "Gemini"
+    }
+  },
+  "image_prompts": [
+    {
+      "part": 1,
+      "title": "Part 1: Setup and First Agent",
+      "file": "01-setup-first-agent.md",
+      "prompt": {
+        "image_type": "setup_diagram",
+        "style": {
+          "design": "clean, modern, professional software architecture diagram",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "left to right flow",
+          "aesthetic": "minimalist, vector-style icons, clear hierarchy"
+        },
+        "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1200},
+        "title": {"text": "Part 1: Setup and First Agent", "position": "top center"},
+        "sections": [
+          {
+            "id": "prerequisites",
+            "position": "left",
+            "color": "#4285F4",
+            "components": [
+              {"name": "Python 3.10+", "icon": "python logo"},
+              {"name": "uv", "icon": "package manager"},
+              {"name": "API Keys", "icon": "key"}
+            ]
+          },
+          {
+            "id": "project",
+            "position": "center-left",
+            "color": "#E8F5E9",
+            "components": [
+              {"name": "app/__init__.py", "icon": "folder"},
+              {"name": "app/agent.py", "icon": "file"},
+              {"name": "app/config.py", "icon": "settings"}
+            ]
+          },
+          {
+            "id": "agent",
+            "position": "center-right",
+            "color": "#34A853",
+            "components": [
+              {"name": "Root Agent", "icon": "robot/agent", "description": "Simple conversational agent"}
+            ]
+          },
+          {
+            "id": "output",
+            "position": "right",
+            "color": "#FBBC05",
+            "components": [
+              {"name": "ADK Web UI", "icon": "browser", "port": ":8501", "description": "Chat interface"}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "prerequisites", "to": "project", "label": "make install"},
+          {"from": "project", "to": "agent", "label": "exports root_agent"},
+          {"from": "agent", "to": "output", "label": "make dev"}
+        ]
+      }
+    },
+    {
+      "part": 2,
+      "title": "Part 2: IntakeAgent - Request Parsing",
+      "file": "02-intake-agent.md",
+      "prompt": {
+        "image_type": "data_flow_diagram",
+        "style": {
+          "design": "clean, modern technical diagram",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "horizontal flow",
+          "aesthetic": "minimalist, vector-style"
+        },
+        "dimensions": {"aspect_ratio": "3:1", "recommended_width": 1000},
+        "title": {"text": "Part 2: IntakeAgent - Request Parsing", "position": "top center"},
+        "sections": [
+          {
+            "id": "input",
+            "position": "left",
+            "color": "#4285F4",
+            "components": [
+              {"name": "User Query", "icon": "speech bubble", "example": "I want to open a coffee shop in Indiranagar, Bangalore"}
+            ]
+          },
+          {
+            "id": "agent",
+            "position": "center",
+            "color": "#34A853",
+            "components": [
+              {"name": "IntakeAgent", "icon": "robot with clipboard", "features": ["Pydantic Schema", "Few-shot Examples"]}
+            ]
+          },
+          {
+            "id": "output",
+            "position": "right",
+            "color": "#FBBC05",
+            "components": [
+              {"name": "Structured Data", "icon": "JSON/code block", "fields": ["target_location", "business_type"]}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "input", "to": "agent", "label": "Parse"},
+          {"from": "agent", "to": "output", "label": "Extract"}
+        ]
+      }
+    },
+    {
+      "part": 3,
+      "title": "Part 3: MarketResearchAgent - Live Web Search",
+      "file": "03-market-research.md",
+      "prompt": {
+        "image_type": "pipeline_step_diagram",
+        "style": {
+          "design": "clean, modern technical diagram",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "horizontal flow with tool callout",
+          "aesthetic": "minimalist, vector-style"
+        },
+        "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1100},
+        "title": {"text": "Part 3: MarketResearchAgent - Live Web Search", "position": "top center"},
+        "sections": [
+          {
+            "id": "previous",
+            "position": "left",
+            "color": "#E8F5E9",
+            "components": [
+              {"name": "IntakeAgent", "icon": "checkmark", "status": "completed"},
+              {"name": "Parsed Request", "fields": ["target_location", "business_type"]}
+            ]
+          },
+          {
+            "id": "current",
+            "position": "center",
+            "color": "#34A853",
+            "components": [
+              {"name": "MarketResearchAgent", "icon": "magnifying glass", "status": "active"},
+              {"name": "Tool: google_search", "icon": "Google search icon"}
+            ]
+          },
+          {
+            "id": "output",
+            "position": "right",
+            "color": "#FBBC05",
+            "components": [
+              {"name": "market_research_findings", "icon": "document", "content": ["Demographics", "Trends", "Foot Traffic", "Rental Rates"]}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "previous", "to": "current", "label": "State: location, business"},
+          {"from": "current", "to": "output", "label": "Findings"}
+        ]
+      }
+    },
+    {
+      "part": 4,
+      "title": "Part 4: CompetitorMappingAgent - Google Maps Integration",
+      "file": "04-competitor-mapping.md",
+      "prompt": {
+        "image_type": "api_integration_diagram",
+        "style": {
+          "design": "clean, modern technical diagram",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "horizontal with API callout",
+          "aesthetic": "minimalist, vector-style"
+        },
+        "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1100},
+        "title": {"text": "Part 4: CompetitorMappingAgent - Google Maps Integration", "position": "top center"},
+        "sections": [
+          {
+            "id": "previous",
+            "position": "left",
+            "color": "#E8F5E9",
+            "components": [
+              {"name": "IntakeAgent", "icon": "checkmark"},
+              {"name": "MarketResearchAgent", "icon": "checkmark"},
+              {"name": "market_research_findings", "status": "available"}
+            ]
+          },
+          {
+            "id": "current",
+            "position": "center",
+            "color": "#34A853",
+            "components": [
+              {"name": "CompetitorMappingAgent", "icon": "map pin"},
+              {"name": "Custom Tool: search_places", "icon": "function/code"}
+            ]
+          },
+          {
+            "id": "api",
+            "position": "below center",
+            "color": "#EA4335",
+            "components": [
+              {"name": "Google Maps Places API", "icon": "Google Maps logo", "data": ["Names", "Ratings", "Reviews", "Addresses"]}
+            ]
+          },
+          {
+            "id": "output",
+            "position": "right",
+            "color": "#FBBC05",
+            "components": [
+              {"name": "competitor_analysis", "icon": "data table", "rows": ["Competitor 1: 4.5★", "Competitor 2: 4.2★", "..."]}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "previous", "to": "current"},
+          {"from": "current", "to": "api", "label": "API Call", "style": "dashed"},
+          {"from": "api", "to": "current", "label": "Response"},
+          {"from": "current", "to": "output"}
+        ]
+      }
+    },
+    {
+      "part": 5,
+      "title": "Part 5: GapAnalysisAgent - Code Execution",
+      "file": "05-code-execution.md",
+      "prompt": {
+        "image_type": "code_execution_diagram",
+        "style": {
+          "design": "developer-focused, IDE aesthetic",
+          "color_scheme": "Google Cloud colors with code syntax highlighting",
+          "layout": "vertical flow",
+          "aesthetic": "clean, modern"
+        },
+        "dimensions": {"aspect_ratio": "4:3", "recommended_width": 900},
+        "title": {"text": "Part 5: GapAnalysisAgent - Code Execution", "position": "top center"},
+        "sections": [
+          {
+            "id": "input",
+            "position": "top",
+            "color": "#E8F5E9",
+            "components": [
+              {"name": "competitor_analysis", "icon": "data"},
+              {"name": "market_research_findings", "icon": "data"}
+            ]
+          },
+          {
+            "id": "agent",
+            "position": "center",
+            "color": "#34A853",
+            "components": [
+              {"name": "GapAnalysisAgent", "icon": "robot + code"},
+              {"name": "BuiltInCodeExecutor", "icon": "terminal"}
+            ]
+          },
+          {
+            "id": "code",
+            "position": "center-right",
+            "color": "#263238",
+            "components": [
+              {"name": "Generated Python Code", "icon": "code editor", "snippet": "import pandas as pd\ndf = pd.DataFrame(...)\nviability = calculate_score(...)"}
+            ]
+          },
+          {
+            "id": "output",
+            "position": "bottom",
+            "color": "#FBBC05",
+            "components": [
+              {"name": "gap_analysis", "content": ["Viability: 87/100", "Saturation: Low", "Opportunity: High"]}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "input", "to": "agent"},
+          {"from": "agent", "to": "code", "label": "Generate Code"},
+          {"from": "code", "to": "output", "label": "Execute"}
+        ]
+      }
+    },
+    {
+      "part": 6,
+      "title": "Part 6: StrategyAdvisorAgent - Strategic Synthesis",
+      "file": "06-strategy-synthesis.md",
+      "prompt": {
+        "image_type": "synthesis_diagram",
+        "style": {
+          "design": "consulting/strategy presentation style",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "convergent flow",
+          "aesthetic": "professional, clean"
+        },
+        "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1100},
+        "title": {"text": "Part 6: StrategyAdvisorAgent - Strategic Synthesis", "position": "top center"},
+        "sections": [
+          {
+            "id": "inputs",
+            "position": "left",
+            "layout": "vertical stack",
+            "components": [
+              {"name": "market_research_findings", "color": "#E3F2FD"},
+              {"name": "competitor_analysis", "color": "#E8F5E9"},
+              {"name": "gap_analysis", "color": "#FFF3E0"}
+            ]
+          },
+          {
+            "id": "thinking",
+            "position": "center",
+            "color": "#34A853",
+            "components": [
+              {"name": "StrategyAdvisorAgent", "icon": "brain with gears"},
+              {"name": "Extended Reasoning", "icon": "thought bubbles"},
+              {"name": "ThinkingConfig", "description": "thinking_budget: -1"}
+            ]
+          },
+          {
+            "id": "output",
+            "position": "right",
+            "color": "#FBBC05",
+            "components": [
+              {"name": "LocationIntelligenceReport", "icon": "structured document", "sections": ["Top Recommendation: 78/100", "Strengths", "Concerns", "Alternatives", "Next Steps"]}
+            ]
+          },
+          {
+            "id": "artifact",
+            "position": "bottom-right",
+            "color": "#4285F4",
+            "components": [
+              {"name": "intelligence_report.json", "icon": "JSON file"}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "inputs", "to": "thinking", "label": "All findings"},
+          {"from": "thinking", "to": "output", "label": "Synthesize"},
+          {"from": "output", "to": "artifact", "label": "Save Artifact"}
+        ]
+      }
+    },
+    {
+      "part": 7,
+      "title": "Part 7: ArtifactGenerationPipeline - Complete Agent!",
+      "file": "07-artifact-generation.md",
+      "prompt": {
+        "image_type": "parallel_pipeline_diagram",
+        "style": {
+          "design": "clean, modern technical diagram",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "horizontal with parallel fork",
+          "aesthetic": "minimalist, vector-style"
+        },
+        "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1200},
+        "title": {"text": "Part 7: ArtifactGenerationPipeline - Complete Agent!", "position": "top center"},
+        "sections": [
+          {
+            "id": "input",
+            "position": "left",
+            "color": "#E8F5E9",
+            "components": [
+              {"name": "strategic_report", "icon": "document", "status": "from Part 6"}
+            ]
+          },
+          {
+            "id": "parallel",
+            "position": "center",
+            "label": "ParallelAgent (concurrent)",
+            "layout": "vertical stack of 3",
+            "components": [
+              {"name": "ReportGeneratorAgent", "icon": "HTML document", "tool": "generate_html_report", "color": "#E0F7FA"},
+              {"name": "InfographicGeneratorAgent", "icon": "image", "tool": "generate_infographic", "color": "#FFF8E1"},
+              {"name": "AudioOverviewAgent", "icon": "microphone", "tool": "generate_audio_overview", "color": "#F1F8E9"}
+            ]
+          },
+          {
+            "id": "outputs",
+            "position": "right",
+            "color": "#FBBC05",
+            "components": [
+              {"name": "executive_report.html", "icon": "HTML file", "description": "7-slide presentation"},
+              {"name": "infographic.png", "icon": "image file", "description": "Visual summary"},
+              {"name": "audio_overview.wav", "icon": "audio file", "description": "~2-3 min podcast"}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "input", "to": "parallel", "label": "Fork (3 parallel)"},
+          {"from": "parallel", "to": "outputs", "style": "triple arrows"}
+        ],
+        "annotation": {"text": "~40% faster than sequential", "position": "below parallel"}
+      }
+    },
+    {
+      "part": 8,
+      "title": "Part 8: Testing Your Agent",
+      "file": "08-testing.md",
+      "prompt": {
+        "image_type": "testing_pyramid",
+        "style": {
+          "design": "clean, technical documentation style",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "pyramid with annotations",
+          "aesthetic": "minimalist"
+        },
+        "dimensions": {"aspect_ratio": "4:3", "recommended_width": 800},
+        "title": {"text": "Part 8: Testing Your Agent", "position": "top center"},
+        "sections": [
+          {
+            "id": "pyramid",
+            "layout": "triangle/pyramid",
+            "layers": [
+              {"level": 1, "name": "Unit Tests", "color": "#E8F5E9", "time": "~2 seconds", "command": "make test-unit"},
+              {"level": 2, "name": "Integration Tests", "color": "#FFF3E0", "time": "~2-5 minutes", "command": "make test-agents"},
+              {"level": 3, "name": "Evaluations", "color": "#FCE4EC", "time": "Quality metrics", "command": "make eval"}
+            ]
+          },
+          {
+            "id": "axis",
+            "position": "right",
+            "annotations": [
+              {"arrow": "up", "label": "Cost & Time"},
+              {"arrow": "down", "label": "Speed & Coverage"}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "part": 9,
+      "title": "Part 9: Production Deployment",
+      "file": "09-production-deployment.md",
+      "prompt": {
+        "image_type": "deployment_architecture",
+        "style": {
+          "design": "cloud architecture diagram",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "left to right with cloud platform",
+          "aesthetic": "professional, enterprise"
+        },
+        "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1100},
+        "title": {"text": "Part 9: Production Deployment", "position": "top center"},
+        "sections": [
+          {
+            "id": "local",
+            "position": "left",
+            "color": "#E8F5E9",
+            "components": [
+              {"name": "Local Development", "icon": "laptop", "description": "adk web :8501"}
+            ]
+          },
+          {
+            "id": "asp",
+            "position": "center-left",
+            "color": "#4285F4",
+            "components": [
+              {"name": "Agent Starter Pack", "icon": "template/scaffold", "command": "agent-starter-pack create"}
+            ]
+          },
+          {
+            "id": "gcp",
+            "position": "center-right",
+            "label": "Google Cloud Platform",
+            "components": [
+              {"name": "Cloud Run", "icon": "Cloud Run logo", "features": ["Serverless", "Auto-scaling"]},
+              {"name": "Agent Engine", "icon": "Vertex AI logo", "features": ["Managed", "Enterprise"]}
+            ]
+          },
+          {
+            "id": "auth",
+            "position": "right",
+            "color": "#EA4335",
+            "components": [
+              {"name": "IAP Authentication", "icon": "shield/lock"},
+              {"name": "Production URL", "icon": "globe/link"}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "local", "to": "asp", "label": "Template"},
+          {"from": "asp", "to": "gcp", "label": "make deploy"},
+          {"from": "gcp", "to": "auth", "label": "Secured"}
+        ]
+      }
+    },
+    {
+      "part": "bonus",
+      "title": "Bonus: AG-UI Interactive Dashboard",
+      "file": "bonus-ag-ui-frontend.md",
+      "prompt": {
+        "image_type": "ui_mockup",
+        "style": {
+          "design": "modern web application mockup",
+          "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
+          "layout": "dashboard with sidebar",
+          "aesthetic": "React/Next.js modern UI"
+        },
+        "dimensions": {"aspect_ratio": "16:10", "recommended_width": 1200},
+        "title": {"text": "Bonus: AG-UI Interactive Dashboard", "position": "top center"},
+        "sections": [
+          {
+            "id": "sidebar",
+            "position": "right",
+            "width": "300px",
+            "color": "#4285F4",
+            "components": [
+              {"name": "CopilotSidebar", "content": ["User message", "Agent response", "Progress indicator"]}
+            ]
+          },
+          {
+            "id": "header",
+            "position": "top-left",
+            "components": [
+              {"name": "Title", "text": "Retail AI Location Strategy"},
+              {"name": "Subtitle", "text": "Powered by Google ADK + Gemini"}
+            ]
+          },
+          {
+            "id": "timeline",
+            "position": "main area top",
+            "color": "#E8F5E9",
+            "components": [
+              {"name": "PipelineTimeline", "stages": ["Intake ✓", "Research ✓", "Mapping ✓", "Analysis...", "Strategy", "Report", "Infographic"]}
+            ]
+          },
+          {
+            "id": "cards",
+            "position": "main area bottom",
+            "layout": "grid 2x2",
+            "components": [
+              {"name": "LocationReport", "content": ["Defence Colony", "Score: 78/100", "Opportunity: Residential Premium"]},
+              {"name": "CompetitorCard", "content": ["15 competitors", "Avg rating: 4.3", "Chain: 45%"]},
+              {"name": "MarketCard", "content": ["Population: High", "Income: High", "Traffic: Moderate"]},
+              {"name": "KeyInsights", "content": ["Insight 1", "Insight 2", "Insight 3"]}
+            ]
+          }
+        ],
+        "connections": [
+          {"from": "sidebar", "to": "timeline", "label": "State Sync", "style": "bidirectional"}
+        ],
+        "annotation": {"text": "AG-UI Protocol: Real-time state synchronization", "position": "bottom"}
+      }
+    }
+  ]
+}
