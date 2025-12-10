@@ -1,49 +1,65 @@
 # Part 3: Live Market Research with Google Search
 
-By the end of this part, your agent will research real-time market data using Google Search.
+In the previous part, you built the IntakeAgent to extract structured data from user requests. Now we have clean inputs—a target location and business type—but we don't know anything *about* that location. Is it a good market? What are the demographics? What trends are shaping the area?
 
-**Input**: Parsed location and business type from IntakeAgent
-**Output**: Live demographics, trends, and commercial viability analysis
+That's where the **MarketResearchAgent** comes in. By the end of this part, your agent will search the live web to gather real-time market intelligence.
+
+<p align="center">
+  <img src="assets/part3_pipeline_step_diagram.jpeg" alt="Part 3: MarketResearchAgent - Live Web Search in the Pipeline" width="600">
+</p>
 
 ---
 
-## Why Live Data Matters
+## Why Live Data Changes Everything
 
-LLMs have training data cutoffs. They can't tell you:
-- Current rental rates in a neighborhood
-- Recent developments or infrastructure changes
+Large language models have a fundamental limitation: their knowledge has a cutoff date. Gemini might know that Indiranagar was a popular neighborhood in Bangalore as of its training, but it can't tell you:
+
+- What new developments opened last quarter
+- Current rental rates in the area
+- Recent infrastructure changes like new metro lines
 - Today's competitive landscape
-- Current consumer trends
+- Emerging consumer trends
 
-The **MarketResearchAgent** uses Google Search to get fresh data.
+For location strategy, stale data is dangerous. A neighborhood that was "up and coming" two years ago might now be saturated with competitors. A formerly quiet area might have a new tech park driving foot traffic. Markets change fast, and your analysis needs to reflect reality.
 
-### What We Research
+The MarketResearchAgent solves this by tapping into ADK's built-in `google_search` tool. Instead of relying solely on the model's training data, it actively searches the web for current information—demographics from recent census data, news about developments, real estate listings, local business coverage, and more.
 
-| Focus Area | Data Points |
-|------------|-------------|
-| **Demographics** | Age distribution, income levels, lifestyle indicators |
-| **Market Growth** | Population trends, new developments, infrastructure |
-| **Industry Presence** | Existing businesses, consumer preferences, saturation |
-| **Commercial Viability** | Foot traffic, rental costs, business environment |
+---
+
+## What We're Researching
+
+The agent investigates four key areas that determine location viability:
+
+| Focus Area | What We're Looking For |
+|------------|------------------------|
+| **Demographics** | Age distribution, income levels, lifestyle indicators (professionals, students, families), population density |
+| **Market Growth** | Population trends, new developments, infrastructure improvements, economic indicators |
+| **Industry Presence** | Existing similar businesses, consumer preferences, market saturation, success/failure stories |
+| **Commercial Viability** | Foot traffic patterns, rental costs, business environment, regulations |
+
+Together, these paint a comprehensive picture of whether a location makes sense for a given business type.
 
 ---
 
 ## Using ADK's Built-in Google Search
 
-ADK provides `google_search` as a built-in tool. No API key management needed - it uses Gemini's integrated search.
+One of ADK's most powerful features is its collection of built-in tools. For web search, you don't need to manage API keys or configure external services—Gemini has integrated search capabilities that ADK exposes through a simple import:
 
 ```python
-# app/sub_agents/market_research/agent.py
 from google.adk.tools import google_search
 ```
 
-That's it. Import and use.
+That's it. When you add `google_search` to an agent's tools, the agent can search the web and incorporate results into its reasoning. The search happens through Gemini's infrastructure, so there's no additional authentication or quota management on your end.
+
+This is remarkably different from traditional approaches where you'd need to set up a Search API, handle rate limiting, parse results, and manage credentials. ADK abstracts all of that away.
+
+> **Learn more:** The [Built-in Tools documentation](https://google.github.io/adk-docs/tools/built-in-tools/) covers all the tools ADK provides out of the box.
 
 ---
 
 ## The Research Instruction
 
-The instruction guides what to search for and how to structure findings:
+The instruction prompt is where we define *what* the agent should research and *how* it should present findings. Here's the complete instruction:
 
 ```python
 MARKET_RESEARCH_INSTRUCTION = """You are a market research analyst specializing in retail location intelligence.
@@ -93,21 +109,27 @@ Include specific recommendations for market entry strategy.
 """
 ```
 
-### State Injection with `{variable}`
+### State Injection: The `{variable}` Syntax
 
-Notice the placeholders:
-- `{target_location}` - Injected from state (set by IntakeAgent)
-- `{business_type}` - Injected from state
-- `{current_date}` - Injected from state (set by callback)
+Notice the placeholders in the instruction: `{target_location}`, `{business_type}`, and `{current_date}`. These aren't just template strings—they're ADK's **state injection** mechanism.
 
-ADK automatically replaces these with actual values from session state.
+When the agent runs, ADK automatically replaces these placeholders with actual values from the session state:
+
+- `{target_location}` → The location extracted by IntakeAgent (e.g., "Indiranagar, Bangalore")
+- `{business_type}` → The business type from IntakeAgent (e.g., "coffee shop")
+- `{current_date}` → Today's date, set by a callback (e.g., "2024-12-10")
+
+This creates a seamless data flow between agents. The IntakeAgent writes to state, and the MarketResearchAgent reads from it—without any explicit parameter passing or API calls between them.
+
+> **Learn more:** The [Session State documentation](https://google.github.io/adk-docs/sessions/state/) explains how state flows through multi-agent pipelines.
 
 ---
 
 ## Building the MarketResearchAgent
 
+With the instruction defined, building the agent is straightforward:
+
 ```python
-# app/sub_agents/market_research/agent.py
 from google.adk.agents import LlmAgent
 from google.adk.tools import google_search
 from google.genai import types
@@ -135,23 +157,26 @@ market_research_agent = LlmAgent(
 )
 ```
 
-**Key Parameters**:
+Let's break down the key parameters:
 
-| Parameter | Purpose |
-|-----------|---------|
-| `tools=[google_search]` | Gives agent access to live web search |
-| `output_key="market_research_findings"` | Saves findings to state for next agents |
-| `before_agent_callback` | Setup before agent runs |
-| `after_agent_callback` | Cleanup/logging after agent completes |
+| Parameter | What It Does |
+|-----------|--------------|
+| `tools=[google_search]` | Gives the agent access to live web search |
+| `output_key="market_research_findings"` | Saves the agent's output to state for downstream agents |
+| `before_agent_callback` | Runs setup code before the agent executes |
+| `after_agent_callback` | Runs cleanup/logging after the agent completes |
+
+The `output_key` is particularly important. Whatever the agent produces gets stored in `state["market_research_findings"]`, making it available to subsequent agents in the pipeline. The CompetitorMappingAgent and GapAnalysisAgent can reference this research in their own instructions using `{market_research_findings}`.
 
 ---
 
-## The Before Callback
+## Lifecycle Callbacks for Logging and Setup
 
-The `before_market_research` callback sets up the agent:
+Callbacks let you run code before and after an agent executes. For MarketResearchAgent, we use them for logging, date injection, and pipeline tracking.
+
+### The Before Callback
 
 ```python
-# app/callbacks/pipeline_callbacks.py
 from datetime import datetime
 from google.adk.agents.callback_context import CallbackContext
 
@@ -176,22 +201,13 @@ def before_market_research(callback_context: CallbackContext) -> Optional[types.
     return None  # Allow agent to proceed
 ```
 
-**What it does**:
-1. Logs the stage start with target details
-2. Sets `current_date` for the instruction's `{current_date}` placeholder
-3. Initializes pipeline tracking variables
-4. Returns `None` to allow the agent to proceed
+This callback does several things. First, it logs the stage start with context about what's being analyzed—helpful for debugging and monitoring. Second, it sets `current_date` in state, which the instruction's `{current_date}` placeholder will pick up. This ensures the agent knows what "recent" means when searching for information from the last 1-2 years. Finally, it initializes tracking variables that help monitor pipeline progress.
 
-### Why Set `current_date` Here?
+Returning `None` tells ADK to proceed normally. If you returned a `types.Content` object instead, that would override the agent's execution entirely—useful for short-circuiting in certain conditions.
 
-The instruction says "Focus on information from the last 1-2 years." By injecting today's date, the agent knows what "recent" means.
-
----
-
-## The After Callback
+### The After Callback
 
 ```python
-# app/callbacks/pipeline_callbacks.py
 def after_market_research(callback_context: CallbackContext) -> Optional[types.Content]:
     """Log completion of market research and update tracking."""
     findings = callback_context.state.get("market_research_findings", "")
@@ -207,24 +223,23 @@ def after_market_research(callback_context: CallbackContext) -> Optional[types.C
     return None
 ```
 
-**What it does**:
-1. Logs completion with output size
-2. Tracks that this stage is complete
+The after callback logs completion and tracks that this stage finished. The `stages_completed` array is useful for debugging and for frontends that want to show pipeline progress.
+
+> **Learn more:** The [Callbacks documentation](https://google.github.io/adk-docs/callbacks/) covers the full lifecycle and advanced patterns.
 
 ---
 
-## Wiring into the Pipeline
+## Wiring into the Sequential Pipeline
 
-In `app/agent.py`, the agent is added to the SequentialAgent:
+The MarketResearchAgent is the first agent in the `LocationStrategyPipeline`, a `SequentialAgent` that runs each stage in order:
 
 ```python
-# app/agent.py
 from google.adk.agents import SequentialAgent
 from .sub_agents.market_research.agent import market_research_agent
 
 location_strategy_pipeline = SequentialAgent(
     name="LocationStrategyPipeline",
-    description="Comprehensive retail location strategy analysis pipeline...",
+    description="Comprehensive retail location strategy analysis pipeline",
     sub_agents=[
         market_research_agent,        # Stage 1: Market research with search
         competitor_mapping_agent,     # Stage 2A: Competitor mapping with Maps
@@ -235,71 +250,34 @@ location_strategy_pipeline = SequentialAgent(
 )
 ```
 
-`SequentialAgent` runs agents in order, passing state between them.
+`SequentialAgent` is one of ADK's workflow agents. It runs each sub-agent in order, with all agents sharing the same session state. When MarketResearchAgent writes to `state["market_research_findings"]`, that data is immediately available to CompetitorMappingAgent.
+
+This is the power of ADK's architecture: you compose complex pipelines from simple, focused agents. Each agent does one thing well, and the framework handles the orchestration.
+
+> **Learn more:** The [SequentialAgent documentation](https://google.github.io/adk-docs/agents/workflow-agents/#sequentialagent) covers configuration options and patterns.
 
 ---
 
-## The Pipeline So Far
+## Testing the MarketResearchAgent
 
-```
-User Query
-    │
-    ▼
-┌─────────────┐
-│ Root Agent  │ ── calls IntakeAgent
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│IntakeAgent  │ ── output_key="parsed_request"
-└─────────────┘    → state: target_location, business_type
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│     LocationStrategyPipeline            │
-│         (SequentialAgent)               │
-├─────────────────────────────────────────┤
-│  ┌───────────────────────┐              │
-│  │MarketResearchAgent    │ ◄── YOU ARE HERE
-│  │ tools: [google_search]│              │
-│  │ output_key:           │              │
-│  │   "market_research_   │              │
-│  │    findings"          │              │
-│  └───────────────────────┘              │
-│              │                          │
-│              ▼                          │
-│  [Next: CompetitorMappingAgent]         │
-└─────────────────────────────────────────┘
-```
-
----
-
-## Try It!
-
-Run the agent:
+Let's see it in action. Start the development server:
 
 ```bash
 make dev
 ```
 
-Open `http://localhost:8501` and try:
-- "I want to open a coffee shop in Indiranagar, Bangalore"
+Open `http://localhost:8501` and try a query like:
 
-Watch the output - you'll see:
-1. IntakeAgent extracts location and business type
-2. MarketResearchAgent searches the web
-3. Real demographic and market data appears
+> "I want to open a coffee shop in Indiranagar, Bangalore"
 
-In the state panel, look for `market_research_findings` - it contains the full research output.
+Watch the output stream in. After IntakeAgent extracts the location and business type, you'll see MarketResearchAgent begin its research. The agent makes multiple searches, synthesizes the results, and produces a structured analysis.
 
-### Example Output
-
-For "coffee shop in Indiranagar, Bangalore", you might see:
+In the **State** panel on the right, look for `market_research_findings`. It contains the full research output, which might look something like this:
 
 ```
 ## Demographics Analysis
 
-Indiranagar is one of Bangalore's most affluent neighborhoods...
+Indiranagar is one of Bangalore's most affluent neighborhoods, characterized by:
 - Population: High density, predominantly young professionals (25-40)
 - Income level: Upper-middle to high income bracket
 - Lifestyle: Tech professionals, startup founders, urban millennials
@@ -308,52 +286,46 @@ Indiranagar is one of Bangalore's most affluent neighborhoods...
 
 Recent developments include:
 - Metro Purple Line connectivity (operational since 2017)
-- New coworking spaces and tech offices
-- Increasing commercial real estate investment
+- New coworking spaces and tech offices opening quarterly
+- Increasing commercial real estate investment in 100 Feet Road corridor
 
 ## Industry Presence
 
-Coffee culture is strong with existing players:
-- Third Wave Coffee: 2 locations
-- Blue Tokai: 1 location
+Coffee culture is well-established with existing players:
+- Third Wave Coffee: 2 locations in Indiranagar
+- Blue Tokai: 1 location on 12th Main
 - Starbucks: 2 locations
 - Multiple local specialty cafes
 
 ## Commercial Viability
 
 - High foot traffic, especially evenings and weekends
-- Rental costs: Premium tier (Rs 150-200/sq ft)
-- Strong purchasing power for specialty coffee
+- Rental costs: Premium tier (₹150-200/sq ft)
+- Strong purchasing power for specialty coffee (₹200-400 average ticket)
 
 ## Verdict
 
-Strong market for coffee shop. High disposable income, established coffee culture, and young professional demographic create favorable conditions. However, competition is significant - differentiation strategy required.
+Strong market for a coffee shop. High disposable income, established coffee
+culture, and young professional demographic create favorable conditions.
+However, competition is significant—differentiation strategy required.
+Consider: specialty roasts, work-friendly environment, or unique ambiance.
 ```
+
+This is real, current information gathered from live web searches—not hallucinated from training data.
 
 ---
 
 ## What You've Learned
 
-In this part, you:
+In this part, you've built the MarketResearchAgent and explored several key ADK concepts:
 
-1. Used ADK's built-in `google_search` tool
-2. Created state-injected instructions with `{variable}` syntax
-3. Added before/after callbacks for logging and tracking
-4. Wired the agent into a SequentialAgent pipeline
-5. Saw real-time search results in your agent
+- **Built-in tools** like `google_search` provide powerful capabilities with minimal configuration
+- **State injection** with `{variable}` syntax creates seamless data flow between agents
+- **Lifecycle callbacks** enable logging, setup, and tracking without cluttering agent logic
+- **SequentialAgent** orchestrates multi-step pipelines with shared state
+- **`output_key`** makes agent output available to downstream agents automatically
 
----
-
-## Next Up
-
-The market research tells us about the *opportunity*, but we're missing something critical: who exactly is already there? Search results mention "Third Wave Coffee" and "Blue Tokai," but how many locations do they have? What are their ratings? Where exactly are they positioned?
-
-In [Part 4: Competitor Mapping](./04-competitor-mapping.md), we'll build a **custom tool** that queries the Google Maps Places API for real competitor data. Instead of relying on search snippets, we'll get structured data—competitor names, ratings, review counts, and addresses—directly from Google Maps.
-
-You'll learn:
-- How to create custom function tools with Python functions
-- Using `ToolContext` to access session state from within tools
-- Integrating external APIs with proper error handling
+The pattern here—focused agent, clear instruction, tool access, state integration—is the foundation for building sophisticated multi-agent systems.
 
 ---
 
@@ -366,68 +338,35 @@ You'll learn:
 | Before callback | `before_agent_callback=function` |
 | After callback | `after_agent_callback=function` |
 | Sequential pipeline | `SequentialAgent(sub_agents=[...])` |
+| Save output to state | `output_key="key_name"` |
 
----
+**Files referenced in this part:**
 
-**Code files referenced in this part:**
-- [`app/sub_agents/market_research/agent.py`](../app/sub_agents/market_research/agent.py) - MarketResearchAgent
-- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) - Callbacks
-- [`app/agent.py`](../app/agent.py) - Pipeline definition
+- [`app/sub_agents/market_research/agent.py`](../app/sub_agents/market_research/agent.py) — MarketResearchAgent definition
+- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) — Lifecycle callbacks
+- [`app/agent.py`](../app/agent.py) — Pipeline orchestration
 
 **ADK Documentation:**
-- [Built-in Tools](https://google.github.io/adk-docs/tools/built-in-tools/)
-- [SequentialAgent](https://google.github.io/adk-docs/agents/workflow-agents/#sequentialagent)
-- [Callbacks](https://google.github.io/adk-docs/agents/callbacks/)
+
+- [Built-in Tools](https://google.github.io/adk-docs/tools/built-in-tools/) — google_search and other provided tools
+- [SequentialAgent](https://google.github.io/adk-docs/agents/workflow-agents/#sequentialagent) — Running agents in sequence
+- [Session State](https://google.github.io/adk-docs/sessions/state/) — State management and injection
+- [Callbacks](https://google.github.io/adk-docs/callbacks/) — Lifecycle hooks for agents
 
 ---
 
-<details>
-<summary>Image Prompt for This Part</summary>
+## Next: Competitor Mapping with Google Maps
 
-```json
-{
-  "image_type": "pipeline_step_diagram",
-  "style": {
-    "design": "clean, modern technical diagram",
-    "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
-    "layout": "horizontal flow with tool callout",
-    "aesthetic": "minimalist, vector-style"
-  },
-  "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1100},
-  "title": {"text": "Part 3: MarketResearchAgent - Live Web Search", "position": "top center"},
-  "sections": [
-    {
-      "id": "previous",
-      "position": "left",
-      "color": "#E8F5E9",
-      "components": [
-        {"name": "IntakeAgent", "icon": "checkmark", "status": "completed"},
-        {"name": "Parsed Request", "fields": ["target_location", "business_type"]}
-      ]
-    },
-    {
-      "id": "current",
-      "position": "center",
-      "color": "#34A853",
-      "components": [
-        {"name": "MarketResearchAgent", "icon": "magnifying glass", "status": "active"},
-        {"name": "Tool: google_search", "icon": "Google search icon"}
-      ]
-    },
-    {
-      "id": "output",
-      "position": "right",
-      "color": "#FBBC05",
-      "components": [
-        {"name": "market_research_findings", "icon": "document", "content": ["Demographics", "Trends", "Foot Traffic", "Rental Rates"]}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "previous", "to": "current", "label": "State: location, business"},
-    {"from": "current", "to": "output", "label": "Findings"}
-  ]
-}
-```
+The market research tells us about the *opportunity*—demographics look good, growth is strong, coffee culture is established. But we're missing critical competitive intelligence. The search results mention competitors like "Third Wave Coffee" and "Blue Tokai," but how many locations do they actually have? What are their ratings? Where exactly are they positioned relative to our target location?
 
-</details>
+In **[Part 4: Competitor Mapping](./04-competitor-mapping.md)**, we'll build a **custom tool** that queries the Google Maps Places API. Instead of relying on search snippets, we'll get structured data directly from Google Maps—competitor names, ratings, review counts, addresses, and price levels.
+
+You'll learn:
+- How to create custom function tools with Python
+- Using `ToolContext` to access session state from within tools
+- Integrating external APIs with proper error handling
+- When to build custom tools vs using built-in ones
+
+---
+
+**[← Back to Part 2: IntakeAgent](./02-intake-agent.md)** | **[Continue to Part 4: Competitor Mapping →](./04-competitor-mapping.md)**

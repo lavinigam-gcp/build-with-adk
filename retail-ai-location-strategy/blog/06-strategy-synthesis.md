@@ -1,31 +1,34 @@
 # Part 6: Strategic Synthesis with Extended Reasoning
 
-By the end of this part, your agent will synthesize all data into actionable strategic recommendations.
+In the previous parts, you built agents that gather data—market research from web searches, competitor locations from Google Maps, and quantitative analysis from code execution. Now comes the hardest part: synthesizing all of this into a coherent strategic recommendation.
 
-**Input**: All previous findings (market research, competitors, gap analysis)
-**Output**: Structured `LocationIntelligenceReport` with recommendations
+This isn't simple summarization. The agent needs to weigh competing factors, handle trade-offs, and reason through complex multi-factor decisions. A zone might have excellent foot traffic but high competition. Another might be underserved but in a declining area. How do you balance viability scores against rental costs against competitive density?
+
+For synthesis tasks like this, standard LLM generation often falls short. The model needs to think deeply before responding. That's where Gemini's **extended reasoning** comes in.
+
+<p align="center">
+  <img src="assets/part6_output_image.jpeg" alt="Part 6: StrategyAdvisorAgent - Strategic Synthesis Output" width="600">
+</p>
 
 ---
 
 ## The Synthesis Challenge
 
-At this point, we have:
-- Market research with demographics and trends
-- Real competitor data with ratings and locations
-- Quantitative analysis with viability scores
+At this point in the pipeline, we have rich data from three sources:
 
-Now we need to:
-- Weigh competing factors
-- Handle trade-offs (e.g., high foot traffic vs. high competition)
-- Generate specific, actionable recommendations
+- **Market research** with demographics, growth trends, and commercial viability indicators
+- **Competitor data** with real ratings, review counts, and geographic clustering
+- **Quantitative analysis** with saturation indices, viability scores, and zone rankings
 
-This requires deep reasoning - not just pattern matching.
+The challenge is to transform this data into actionable strategic recommendations. We need to identify the single best location, explain why it's the best, acknowledge its risks with mitigation strategies, and provide concrete next steps. We also need to surface alternative locations and key insights that span the entire analysis.
+
+This requires deep reasoning—not just pattern matching or summarization. The model needs to consider: "If Defence Colony has the highest viability score but lower foot traffic, is it still the best choice for a coffee shop that depends on walk-in customers? Or should we recommend 12th Main despite its moderate saturation, because the foot traffic compensates?"
 
 ---
 
 ## Extended Reasoning with ThinkingConfig
 
-ADK supports Gemini's "thinking mode" which allocates compute budget for complex reasoning:
+ADK supports Gemini's "thinking mode," which allocates additional compute budget for complex reasoning tasks. Instead of immediately generating a response, the model first thinks through the problem internally, then produces a more considered output.
 
 ```python
 from google.adk.planners import BuiltInPlanner
@@ -42,29 +45,25 @@ strategy_advisor_agent = LlmAgent(
 )
 ```
 
-**ThinkingConfig Parameters:**
+The `ThinkingConfig` parameters control this behavior:
 
 | Parameter | Value | Meaning |
 |-----------|-------|---------|
-| `include_thoughts` | `False` | Don't include thinking in output (required for `output_schema`) |
-| `thinking_budget` | `-1` | Unlimited thinking tokens |
+| `include_thoughts` | `False` | Don't include internal reasoning in output |
+| `thinking_budget` | `-1` | Allow unlimited thinking tokens |
 | `thinking_budget` | `1000` | Limit to 1000 thinking tokens |
 
-**Why Use Thinking Mode?**
+For our synthesis task, we set `thinking_budget=-1` because strategic recommendations benefit from thorough consideration. The model might need to compare multiple zones, weigh competing factors, reason about uncertainties, and consider how different factors interact before arriving at a recommendation.
 
-For synthesis tasks, the model needs to:
-1. Compare multiple zones
-2. Weigh competing factors
-3. Consider trade-offs
-4. Reason about uncertainties
+One important constraint: when using `output_schema` (which forces structured JSON output), you must set `include_thoughts=False`. The internal thinking cannot be included in structured output.
 
-Thinking mode improves quality for these complex decisions.
+> **Learn more:** The [Extended Reasoning documentation](https://google.github.io/adk-docs/agents/llm-agents/#thinking-and-planning) covers thinking mode configuration.
 
 ---
 
-## The Complex Pydantic Schema
+## The LocationIntelligenceReport Schema
 
-The output is a comprehensive `LocationIntelligenceReport`:
+The output of our synthesis agent is a comprehensive `LocationIntelligenceReport`—a nested Pydantic schema that captures everything a business stakeholder needs to make a location decision.
 
 ```python
 # app/schemas/report_schema.py
@@ -144,17 +143,15 @@ class LocationIntelligenceReport(BaseModel):
     methodology_summary: str
 ```
 
-**Schema Benefits:**
-- Forces complete, structured output
-- Every field has a description guiding the model
-- Validation constraints (e.g., `ge=0, le=100` for scores)
-- Nested models for complex structures
+This schema design has several benefits. The nested structure (`StrengthAnalysis`, `ConcernAnalysis`, etc.) ensures each recommendation includes complete information. Field descriptions guide the model on what to include. Validation constraints like `ge=0, le=100` for scores ensure output validity. And the structure itself communicates what a complete strategic recommendation looks like.
+
+> **Learn more:** The [Structured Output documentation](https://google.github.io/adk-docs/agents/llm-agents/#structured-output) covers Pydantic integration.
 
 ---
 
-## The Agent Instruction
+## The Synthesis Instruction
 
-The instruction guides comprehensive synthesis:
+The instruction prompt guides the model through a systematic synthesis process:
 
 ```python
 STRATEGY_ADVISOR_INSTRUCTION = """You are a senior strategy consultant synthesizing location intelligence findings.
@@ -212,9 +209,13 @@ Use evidence from the analysis to support all recommendations.
 """
 ```
 
+The instruction provides all upstream data via state injection—`{market_research_findings}`, `{competitor_analysis}`, and `{gap_analysis}` pull in the complete outputs from earlier pipeline stages. It also provides a clear framework for synthesis, ensuring the model doesn't just summarize but actually reasons through trade-offs.
+
 ---
 
 ## Building the StrategyAdvisorAgent
+
+With the instruction and schema defined, the agent combines extended reasoning with structured output:
 
 ```python
 # app/sub_agents/strategy_advisor/agent.py
@@ -253,20 +254,22 @@ strategy_advisor_agent = LlmAgent(
 )
 ```
 
-**Key Configuration:**
+The key configuration choices:
 
 | Parameter | Purpose |
 |-----------|---------|
-| `model=PRO_MODEL` | Use the most capable model for synthesis |
-| `planner` with `ThinkingConfig` | Enable extended reasoning |
-| `output_schema=LocationIntelligenceReport` | Force structured JSON output |
-| `output_key="strategic_report"` | Save for artifact generation |
+| `model=PRO_MODEL` | Use the most capable model for complex synthesis |
+| `planner` with `ThinkingConfig` | Enable extended reasoning before responding |
+| `output_schema=LocationIntelligenceReport` | Force structured JSON output matching schema |
+| `output_key="strategic_report"` | Save the report for artifact generation downstream |
+
+We use `PRO_MODEL` (typically Gemini Pro or higher) because synthesis tasks benefit from the most capable reasoning. The combination of thinking mode and structured output ensures we get both thoughtful analysis and reliably formatted results.
 
 ---
 
-## Saving the JSON Artifact
+## Saving the Report as an Artifact
 
-The after callback saves the report as an artifact:
+The strategic report is valuable beyond the current session. Stakeholders might want to download it, share it with colleagues, or process it in other systems. The after callback saves the report as a JSON artifact:
 
 ```python
 # app/callbacks/pipeline_callbacks.py
@@ -301,68 +304,34 @@ def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.
     return None
 ```
 
-**Artifact Handling:**
-- `types.Part.from_bytes()` creates the artifact
-- `mime_type="application/json"` identifies the file type
-- `callback_context.save_artifact()` persists it
-- Artifacts appear in the ADK Web UI "Artifacts" tab
+A few implementation details are worth noting. We check for `model_dump()` to handle both Pydantic models and plain dictionaries (ADK may return either). The `types.Part.from_bytes()` function creates the artifact with appropriate MIME type. And `callback_context.save_artifact()` persists it so it appears in the ADK Web UI's Artifacts tab.
+
+> **Learn more:** The [Artifacts documentation](https://google.github.io/adk-docs/agents/artifacts/) covers saving and retrieving artifacts.
 
 ---
 
-## The Core Pipeline Complete!
+## Testing the StrategyAdvisorAgent
 
-With StrategyAdvisorAgent, you have a complete analysis pipeline:
-
-```
-User Query
-    │
-    ▼
-┌─────────────┐
-│IntakeAgent  │ → target_location, business_type
-└─────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│     LocationStrategyPipeline            │
-├─────────────────────────────────────────┤
-│  MarketResearchAgent → market_research_findings
-│              │
-│              ▼
-│  CompetitorMappingAgent → competitor_analysis
-│              │
-│              ▼
-│  GapAnalysisAgent → gap_analysis
-│              │
-│              ▼
-│  ┌───────────────────────────┐          │
-│  │  StrategyAdvisorAgent     │ ◄── YOU ARE HERE
-│  │  planner: BuiltInPlanner  │          │
-│  │    (ThinkingConfig)       │          │
-│  │  output_schema:           │          │
-│  │    LocationIntelligence   │          │
-│  │    Report                 │          │
-│  └───────────────────────────┘          │
-│              │                          │
-│              ▼                          │
-│  [Next: ArtifactGenerationPipeline]     │
-└─────────────────────────────────────────┘
-```
-
----
-
-## Try It!
-
-Run the agent:
+Start the development server and run a complete analysis:
 
 ```bash
 make dev
 ```
 
-After running a query, check:
-1. **State panel**: Look for `strategic_report` - it's the full structured report
-2. **Artifacts tab**: Find `intelligence_report.json`
+Open `http://localhost:8501` and enter a query like:
+
+> "I want to open a coffee shop in Indiranagar, Bangalore"
+
+After the pipeline completes market research, competitor mapping, and gap analysis, you'll see the StrategyAdvisorAgent synthesize everything into a comprehensive report.
+
+Check two places for the output:
+
+1. **State panel**: Look for `strategic_report`—it contains the full structured report as a Pydantic model or dictionary
+2. **Artifacts tab**: Find `intelligence_report.json`—the downloadable JSON file
 
 ### Example Output
+
+Here's what a strategic report looks like:
 
 ```json
 {
@@ -429,31 +398,21 @@ After running a query, check:
 }
 ```
 
+Notice how the report connects evidence to recommendations. The "Lower Competition" strength cites the specific saturation index from gap analysis. The concern about foot traffic includes a concrete mitigation strategy. This is the kind of nuanced output that extended reasoning enables.
+
 ---
 
 ## What You've Learned
 
-In this part, you:
+In this part, you've built the synthesis layer of the pipeline:
 
-1. Used `ThinkingConfig` for extended reasoning
-2. Designed complex nested Pydantic schemas
-3. Combined thinking mode with structured output
-4. Saved artifacts in callbacks with `save_artifact()`
-5. Completed the core analysis pipeline
+- **ThinkingConfig** enables extended reasoning for complex multi-factor decisions
+- **Complex Pydantic schemas** with nested models capture complete strategic recommendations
+- **`include_thoughts=False`** is required when combining thinking mode with `output_schema`
+- **Artifact saving** in callbacks makes reports available for download and sharing
+- **State injection** brings all upstream analysis into the synthesis context
 
----
-
-## Next Up
-
-The strategic report is comprehensive—but it's JSON. Business stakeholders don't read JSON. They need polished deliverables: presentation slides they can share with investors, visual infographics for quick consumption, and maybe even an audio summary they can listen to during their commute.
-
-In [Part 7: Artifact Generation](./07-artifact-generation.md), we'll transform this strategic report into three professional outputs simultaneously using a **ParallelAgent**. This is where your agent becomes a complete solution—from "coffee shop in Bangalore" to a McKinsey-style presentation, a visual infographic, and a podcast-style audio briefing.
-
-You'll learn:
-- **ParallelAgent** for ~40% faster concurrent execution
-- Native image generation with Gemini
-- Multi-speaker TTS audio generation
-- The complete, production-ready agent!
+With StrategyAdvisorAgent, the core analysis pipeline is complete. We go from a natural language request ("coffee shop in Bangalore") to a consultant-grade strategic recommendation with evidence-backed insights.
 
 ---
 
@@ -467,130 +426,35 @@ You'll learn:
 | Save artifact | `callback_context.save_artifact(name, part)` |
 | Create artifact | `types.Part.from_bytes(data=..., mime_type=...)` |
 
----
+**Files referenced in this part:**
 
-**Code files referenced in this part:**
-- [`app/sub_agents/strategy_advisor/agent.py`](../app/sub_agents/strategy_advisor/agent.py) - Agent
-- [`app/schemas/report_schema.py`](../app/schemas/report_schema.py) - Pydantic schemas
-- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) - Artifact saving
+- [`app/sub_agents/strategy_advisor/agent.py`](../app/sub_agents/strategy_advisor/agent.py) — StrategyAdvisorAgent definition
+- [`app/schemas/report_schema.py`](../app/schemas/report_schema.py) — Pydantic schema definitions
+- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) — Artifact saving callback
 
 **ADK Documentation:**
-- [Extended Reasoning](https://google.github.io/adk-docs/agents/llm-agents/#thinking-and-planning)
-- [Artifacts](https://google.github.io/adk-docs/agents/artifacts/)
+
+- [Extended Reasoning](https://google.github.io/adk-docs/agents/llm-agents/#thinking-and-planning) — ThinkingConfig and thinking mode
+- [Structured Output](https://google.github.io/adk-docs/agents/llm-agents/#structured-output) — Using Pydantic with LlmAgent
+- [Artifacts](https://google.github.io/adk-docs/agents/artifacts/) — Saving and retrieving artifacts
+- [Session State](https://google.github.io/adk-docs/sessions/state/) — State injection between agents
 
 ---
 
-<details>
-<summary>Image Prompts for This Part</summary>
+## Next: Multimodal Artifact Generation
 
-### Image 1: Pipeline Flow Diagram
+The strategic report is comprehensive—but it's JSON. Business stakeholders don't read JSON. They need polished deliverables: an HTML presentation they can share with investors, a visual infographic for quick consumption, and maybe even an audio summary they can listen to during their commute.
 
-```json
-{
-  "image_type": "synthesis_diagram",
-  "style": {
-    "design": "consulting/strategy presentation style",
-    "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
-    "layout": "convergent flow",
-    "aesthetic": "professional, clean"
-  },
-  "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1100},
-  "title": {"text": "Part 6: StrategyAdvisorAgent - Strategic Synthesis", "position": "top center"},
-  "sections": [
-    {
-      "id": "inputs",
-      "position": "left",
-      "layout": "vertical stack",
-      "components": [
-        {"name": "market_research_findings", "color": "#E3F2FD"},
-        {"name": "competitor_analysis", "color": "#E8F5E9"},
-        {"name": "gap_analysis", "color": "#FFF3E0"}
-      ]
-    },
-    {
-      "id": "thinking",
-      "position": "center",
-      "color": "#34A853",
-      "components": [
-        {"name": "StrategyAdvisorAgent", "icon": "brain with gears"},
-        {"name": "Extended Reasoning", "icon": "thought bubbles"},
-        {"name": "ThinkingConfig", "description": "thinking_budget: -1"}
-      ]
-    },
-    {
-      "id": "output",
-      "position": "right",
-      "color": "#FBBC05",
-      "components": [
-        {"name": "LocationIntelligenceReport", "icon": "structured document", "sections": ["Top Recommendation: 78/100", "Strengths", "Concerns", "Alternatives", "Next Steps"]}
-      ]
-    },
-    {
-      "id": "artifact",
-      "position": "bottom-right",
-      "color": "#4285F4",
-      "components": [
-        {"name": "intelligence_report.json", "icon": "JSON file"}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "inputs", "to": "thinking", "label": "All findings"},
-    {"from": "thinking", "to": "output", "label": "Synthesize"},
-    {"from": "output", "to": "artifact", "label": "Save Artifact"}
-  ]
-}
-```
+In **[Part 7: Artifact Generation](./07-artifact-generation.md)**, you'll transform this strategic report into three professional outputs simultaneously using a **ParallelAgent**. Instead of generating artifacts one by one, the ParallelAgent runs all three generation agents concurrently—making the pipeline roughly 40% faster.
 
-### Image 2: Extended Reasoning Concept
+You'll learn:
+- Using **ParallelAgent** for concurrent execution
+- Native **image generation** with Gemini's imagen capabilities
+- **Multi-speaker TTS** for podcast-style audio briefings
+- Saving multiple artifact types (HTML, PNG, WAV)
 
-```json
-{
-  "image_type": "concept_diagram",
-  "style": {
-    "design": "cognitive process illustration",
-    "color_scheme": "Google Cloud colors (blue #4285F4, green #34A853, yellow #FBBC05)",
-    "layout": "sequential comparison showing with/without thinking",
-    "aesthetic": "clean, educational, conceptual"
-  },
-  "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1000},
-  "title": {"text": "ThinkingConfig: Think Before Responding", "position": "top center"},
-  "concept": "Show that thinking mode allows the model to reason internally before producing output",
-  "sections": [
-    {
-      "id": "without_thinking",
-      "position": "left half",
-      "label": "Without ThinkingConfig",
-      "color": "#FFF3E0",
-      "components": [
-        {"name": "Input", "description": "Complex synthesis task"},
-        {"name": "LLM", "icon": "brain", "description": "Immediate response"},
-        {"name": "Output", "icon": "document", "description": "May miss nuances"}
-      ],
-      "flow": "straight arrow",
-      "annotation": "Fast but potentially shallow"
-    },
-    {
-      "id": "with_thinking",
-      "position": "right half",
-      "label": "With ThinkingConfig",
-      "color": "#E8F5E9",
-      "components": [
-        {"name": "Input", "description": "Complex synthesis task"},
-        {"name": "Internal Reasoning", "icon": "thought cloud", "description": "Model weighs trade-offs, considers alternatives", "emphasized": true},
-        {"name": "LLM", "icon": "brain + gears", "description": "Informed response"},
-        {"name": "Output", "icon": "structured document", "description": "Comprehensive, nuanced"}
-      ],
-      "flow": "arrow with thinking bubble",
-      "annotation": "thinking_budget: -1 (unlimited)"
-    }
-  ],
-  "key_points": [
-    {"text": "Thinking happens INSIDE the model", "position": "bottom left"},
-    {"text": "include_thoughts=False hides internal reasoning", "position": "bottom center"},
-    {"text": "Critical for complex multi-factor decisions", "position": "bottom right"}
-  ]
-}
-```
+This is where your agent becomes a complete solution—from "coffee shop in Bangalore" to a presentation deck, visual infographic, and audio briefing, all generated automatically.
 
-</details>
+---
+
+**[← Back to Part 5: Code Execution](./05-code-execution.md)** | **[Continue to Part 7: Artifact Generation →](./07-artifact-generation.md)**

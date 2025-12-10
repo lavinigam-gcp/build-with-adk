@@ -1,29 +1,34 @@
 # Part 7: Multimodal Artifact Generation
 
-By the end of this part, you'll have the **complete agent** generating HTML reports, infographics, and podcast-style audio!
+In the previous part, you built the StrategyAdvisorAgent that synthesizes all research into a comprehensive strategic report. But there's a problem: the report is JSON. Business stakeholders don't read JSON. They need polished deliverables they can share with investors, present to boards, or consume on the go.
 
-**Input**: Strategic report from StrategyAdvisorAgent
-**Output**: Three artifacts generated in parallel:
-- `executive_report.html` - 7-slide presentation
-- `infographic.png` - Visual summary
-- `audio_overview.wav` - Podcast audio (~2-3 minutes)
+This is where your agent transforms from a research tool into a complete solution. By the end of this part, you'll have an agent that produces three professional artifacts simultaneously: an HTML executive presentation, a visual infographic, and a podcast-style audio briefing. And thanks to ADK's `ParallelAgent`, all three generate concurrently—making the pipeline roughly 40% faster than sequential execution.
+
+<p align="center">
+  <img src="assets/part7_parallel_pipeline_diagram.jpeg" alt="Part 7: ArtifactGenerationPipeline - Parallel Artifact Generation" width="600">
+</p>
 
 ---
 
 ## Beyond Text: Actionable Outputs
 
-Business users don't want to read JSON. They need:
-- **HTML Reports**: Shareable, printable executive presentations
-- **Infographics**: Quick visual summaries for stakeholders
-- **Audio Summaries**: Podcast-style briefings for busy executives
+The strategic report contains everything a business owner needs to make a location decision: top recommendation with evidence-backed strengths and concerns, alternative locations, key insights, and next steps. But format matters as much as content.
 
-The **ArtifactGenerationPipeline** produces all three simultaneously.
+Different stakeholders consume information differently:
+
+- **Executives** want a polished HTML presentation they can review in minutes and share with their board
+- **Marketing teams** need visual infographics they can use in pitch decks and social media
+- **Busy founders** want audio summaries they can listen to during their commute
+
+The `ArtifactGenerationPipeline` produces all three, transforming a single strategic report into multiple consumption formats.
 
 ---
 
-## ParallelAgent for Performance
+## ParallelAgent: Concurrent Execution
 
-Instead of generating artifacts one-by-one, we use `ParallelAgent`:
+When you have multiple independent tasks—like generating three different artifacts from the same input—running them sequentially wastes time. Each generation might take 10-30 seconds. Sequential execution: 30-90 seconds. Parallel execution: the time of the slowest one.
+
+ADK's `ParallelAgent` runs sub-agents concurrently:
 
 ```python
 # app/sub_agents/artifact_generation/agent.py
@@ -50,19 +55,23 @@ artifact_generation_pipeline = ParallelAgent(
 )
 ```
 
-**Why ParallelAgent?**
+The benefits are significant:
 
 | Benefit | Impact |
 |---------|--------|
-| ~40% faster | All three run simultaneously |
-| Independent failures | One failing doesn't block others |
-| Shared state | All read from `strategic_report` |
+| ~40% faster | All three agents run simultaneously |
+| Independent failures | One agent failing doesn't block others |
+| Shared state | All agents read from the same `strategic_report` |
+
+Each sub-agent reads from session state (specifically `strategic_report` from the previous stage) and writes its artifact independently. If image generation fails due to a quota limit, HTML and audio generation continue unaffected.
+
+> **Learn more:** The [ParallelAgent documentation](https://google.github.io/adk-docs/agents/workflow-agents/#parallelagent) covers configuration and error handling.
 
 ---
 
 ## HTML Report Generation
 
-The `ReportGeneratorAgent` creates McKinsey/BCG style presentations:
+The `ReportGeneratorAgent` creates McKinsey/BCG-style executive presentations—the kind of polished deliverable you'd expect from a strategy consulting firm.
 
 ### The Agent
 
@@ -82,6 +91,8 @@ report_generator_agent = LlmAgent(
     after_agent_callback=after_report_generator,
 )
 ```
+
+The agent's instruction tells it to call the `generate_html_report` tool with the strategic report data. The tool handles the actual generation and artifact saving.
 
 ### The Tool
 
@@ -140,16 +151,15 @@ async def generate_html_report(report_data: str, tool_context: ToolContext) -> d
     }
 ```
 
-**Key points:**
-- Uses `async` for non-blocking execution in parallel
-- `tool_context.save_artifact()` persists the HTML
-- `mime_type="text/html"` tells the UI how to render it
+Several implementation details are worth noting. The function is `async` because `save_artifact()` is asynchronous—essential for non-blocking parallel execution. The `mime_type="text/html"` tells the ADK Web UI to render it as HTML rather than plain text. And we strip markdown code fences that Gemini sometimes wraps around generated code.
+
+> **Learn more:** The [Artifacts documentation](https://google.github.io/adk-docs/agents/artifacts/) covers saving and retrieving different file types.
 
 ---
 
 ## Infographic Generation
 
-Uses Gemini's native image generation:
+Visual communication is powerful—a well-designed infographic conveys complex information at a glance. Gemini's native image generation creates professional business infographics directly from the strategic report.
 
 ```python
 # app/tools/image_generator.py
@@ -171,7 +181,7 @@ async def generate_infographic(data_summary: str, tool_context: ToolContext) -> 
     """
 
     response = client.models.generate_content(
-        model=IMAGE_MODEL,  # gemini-3-pro-image-preview
+        model=IMAGE_MODEL,  # gemini-2.0-flash-exp or imagen model
         contents=prompt,
         config=types.GenerateContentConfig(
             response_modalities=["TEXT", "IMAGE"],  # Enable image output
@@ -196,16 +206,15 @@ async def generate_infographic(data_summary: str, tool_context: ToolContext) -> 
     return {"status": "error", "message": "No image generated"}
 ```
 
-**Key configuration:**
-- `model=IMAGE_MODEL` uses Gemini's image generation model
-- `response_modalities=["TEXT", "IMAGE"]` enables image output
-- Image data is binary, saved directly as artifact
+The key configuration is `response_modalities=["TEXT", "IMAGE"]`, which tells Gemini to generate an image as part of its response. The image comes back as binary data in `part.inline_data`, which we save directly as an artifact.
+
+Image generation models are still evolving, and results can vary. The prompt design matters—asking for "professional business infographic" with "data visualization focused" and "corporate style" guides the model toward appropriate output.
 
 ---
 
 ## Audio Overview Generation
 
-Creates podcast-style audio using Gemini TTS:
+For busy executives who prefer to consume information while commuting or exercising, audio summaries are invaluable. Gemini's text-to-speech capabilities can create podcast-style audio briefings with multiple speakers.
 
 ```python
 # app/tools/audio_generator.py
@@ -266,7 +275,9 @@ async def generate_audio_overview(podcast_script: str, tool_context: ToolContext
             return {"status": "success", "artifact_filename": "audio_overview.wav"}
 ```
 
-**TTS Configuration:**
+The multi-speaker configuration creates a natural dialogue between two hosts, making the audio more engaging than a monotone narration. The script format uses speaker labels like `Host A: "Welcome to our location intelligence briefing..."` that the TTS model interprets correctly.
+
+One important caveat: multi-speaker TTS currently only works with AI Studio. If you're using Vertex AI, the tool falls back to single-speaker narration. Check the tool implementation for the fallback logic.
 
 | Mode | Voices | Script Format |
 |------|--------|---------------|
@@ -275,80 +286,39 @@ async def generate_audio_overview(podcast_script: str, tool_context: ToolContext
 
 ---
 
-## The Complete Pipeline
+## Testing the Complete Agent
 
-With artifact generation, you have the complete agent:
-
-```
-User Query
-    │
-    ▼
-┌─────────────┐
-│IntakeAgent  │ → target_location, business_type
-└─────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│              LocationStrategyPipeline                        │
-├─────────────────────────────────────────────────────────────┤
-│  MarketResearchAgent → market_research_findings              │
-│              │                                               │
-│              ▼                                               │
-│  CompetitorMappingAgent → competitor_analysis                │
-│              │                                               │
-│              ▼                                               │
-│  GapAnalysisAgent → gap_analysis                             │
-│              │                                               │
-│              ▼                                               │
-│  StrategyAdvisorAgent → strategic_report                     │
-│              │                                               │
-│              ▼                                               │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │       ArtifactGenerationPipeline (ParallelAgent)        ││
-│  ├─────────────────────────────────────────────────────────┤│
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ││
-│  │  │   Report     │  │  Infographic │  │    Audio     │  ││
-│  │  │  Generator   │  │   Generator  │  │   Overview   │  ││
-│  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  ││
-│  │         │                 │                 │           ││
-│  │         ▼                 ▼                 ▼           ││
-│  │  executive_     infographic.   audio_overview.          ││
-│  │  report.html       png            wav                   ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Try the Complete Agent!
-
-Run the agent:
+With artifact generation in place, you have the complete pipeline. Start the development server:
 
 ```bash
 make dev
 ```
 
-Try: "I want to open a coffee shop in Indiranagar, Bangalore"
+Open `http://localhost:8501` and enter:
+
+> "I want to open a coffee shop in Indiranagar, Bangalore"
 
 Watch the full pipeline execute:
-1. IntakeAgent parses your request
-2. MarketResearchAgent searches the web
-3. CompetitorMappingAgent finds real competitors
-4. GapAnalysisAgent calculates viability scores
-5. StrategyAdvisorAgent synthesizes recommendations
-6. ArtifactGenerationPipeline creates all outputs in parallel
 
-Check the **Artifacts tab** for:
-- `intelligence_report.json` - Structured data
-- `executive_report.html` - 7-slide presentation
-- `infographic.png` - Visual summary
-- `audio_overview.wav` - Podcast audio
+1. **IntakeAgent** parses your request into structured data
+2. **MarketResearchAgent** searches the web for demographics and trends
+3. **CompetitorMappingAgent** finds real competitors via Google Maps
+4. **GapAnalysisAgent** calculates viability scores with Python code
+5. **StrategyAdvisorAgent** synthesizes everything into strategic recommendations
+6. **ArtifactGenerationPipeline** creates all outputs in parallel
+
+When complete, check the **Artifacts tab** for:
+
+- `intelligence_report.json` — Structured strategic data
+- `executive_report.html` — 7-slide presentation (open in browser for full effect)
+- `infographic.png` — Visual summary
+- `audio_overview.wav` — Podcast audio (~2-3 minutes)
 
 ---
 
-## Callbacks for Artifact Pipeline
+## Callback Coordination
 
-Each artifact generator has callbacks:
+Since the artifact generators run in parallel, we need a way to know when all three are complete. Each generator has its own after callback, and a helper function checks if all three have finished:
 
 ```python
 # app/callbacks/pipeline_callbacks.py
@@ -376,32 +346,36 @@ def _check_artifact_generation_complete(callback_context: CallbackContext):
         logger.info("=" * 60)
 ```
 
+Each after callback appends its stage to `stages_completed`, then calls `_check_artifact_generation_complete()`. When all three artifact stages are in the list, we log the final pipeline completion summary. This pattern works because all three agents share the same session state.
+
 ---
 
 ## What You've Built
 
-Congratulations! You've built a complete multi-agent pipeline that:
+Congratulations! You've built a complete multi-agent pipeline that transforms a natural language request into professional business deliverables:
 
-1. **Parses** natural language requests
+1. **Parses** natural language requests into structured data
 2. **Researches** markets with live web search
-3. **Maps** competitors with Google Maps API
-4. **Analyzes** viability with Python code execution
+3. **Maps** competitors with Google Maps Places API
+4. **Analyzes** viability with sandboxed Python code execution
 5. **Synthesizes** recommendations with extended reasoning
 6. **Generates** multimodal artifacts in parallel
 
+From "I want to open a coffee shop in Bangalore" to a strategic report, executive presentation, visual infographic, and audio briefing—all generated automatically.
+
 ---
 
-## Next Steps
+## What You've Learned
 
-Your agent is *feature-complete*. It takes natural language input and produces strategic reports, visual infographics, and audio briefings. But before you share it with stakeholders or deploy it to production, you need confidence that it actually works reliably.
+In this part, you've seen how ADK enables multimodal artifact generation:
 
-LLM-based agents are notoriously hard to test—outputs vary between runs, external APIs return different data, and "correct" is often subjective. How do you validate something that doesn't give deterministic outputs?
+- **ParallelAgent** runs independent sub-agents concurrently for faster execution
+- **Async tools** with `await tool_context.save_artifact()` enable non-blocking artifact saving
+- **Image generation** uses `response_modalities=["TEXT", "IMAGE"]` for visual outputs
+- **Multi-speaker TTS** creates engaging podcast-style audio with dialogue
+- **Callback coordination** tracks parallel completion across shared state
 
-In [Part 8: Testing](./08-testing.md), we'll establish a testing strategy that handles this uncertainty. You'll learn to write unit tests for schemas, integration tests for individual agents, and evaluations that measure quality over time.
-
-After that:
-- [Part 9: Production](./09-production-deployment.md) - Deploy to Cloud Run or Agent Engine
-- [Bonus: AG-UI](./bonus-ag-ui-frontend.md) - Add a rich interactive dashboard
+This pattern—parallel artifact generation from structured data—applies to many use cases: report generation pipelines, content creation workflows, or any system that needs to produce multiple output formats.
 
 ---
 
@@ -415,72 +389,37 @@ After that:
 | Save artifact | `await tool_context.save_artifact(filename, part)` |
 | Async tools | `async def my_tool(...) -> dict` |
 
----
+**Files referenced in this part:**
 
-**Code files referenced in this part:**
-- [`app/sub_agents/artifact_generation/agent.py`](../app/sub_agents/artifact_generation/agent.py) - ParallelAgent
-- [`app/sub_agents/report_generator/agent.py`](../app/sub_agents/report_generator/agent.py) - HTML report
-- [`app/tools/html_report_generator.py`](../app/tools/html_report_generator.py) - HTML tool
-- [`app/tools/image_generator.py`](../app/tools/image_generator.py) - Image tool
-- [`app/tools/audio_generator.py`](../app/tools/audio_generator.py) - Audio tool
+- [`app/sub_agents/artifact_generation/agent.py`](../app/sub_agents/artifact_generation/agent.py) — ParallelAgent definition
+- [`app/sub_agents/report_generator/agent.py`](../app/sub_agents/report_generator/agent.py) — HTML report agent
+- [`app/tools/html_report_generator.py`](../app/tools/html_report_generator.py) — HTML generation tool
+- [`app/tools/image_generator.py`](../app/tools/image_generator.py) — Infographic generation tool
+- [`app/tools/audio_generator.py`](../app/tools/audio_generator.py) — Audio generation tool
+- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) — Coordination callbacks
 
 **ADK Documentation:**
-- [ParallelAgent](https://google.github.io/adk-docs/agents/workflow-agents/#parallelagent)
-- [Artifacts](https://google.github.io/adk-docs/agents/artifacts/)
+
+- [ParallelAgent](https://google.github.io/adk-docs/agents/workflow-agents/#parallelagent) — Concurrent agent execution
+- [Artifacts](https://google.github.io/adk-docs/agents/artifacts/) — Saving and retrieving files
+- [Custom Function Tools](https://google.github.io/adk-docs/tools/function-tools/) — Building async tools
 
 ---
 
-<details>
-<summary>Image Prompt for This Part</summary>
+## Next: Testing Your Agent
 
-```json
-{
-  "image_type": "parallel_pipeline_diagram",
-  "style": {
-    "design": "clean, modern technical diagram",
-    "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
-    "layout": "horizontal with parallel fork",
-    "aesthetic": "minimalist, vector-style"
-  },
-  "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1200},
-  "title": {"text": "Part 7: ArtifactGenerationPipeline - Complete Agent!", "position": "top center"},
-  "sections": [
-    {
-      "id": "input",
-      "position": "left",
-      "color": "#E8F5E9",
-      "components": [
-        {"name": "strategic_report", "icon": "document", "status": "from Part 6"}
-      ]
-    },
-    {
-      "id": "parallel",
-      "position": "center",
-      "label": "ParallelAgent (concurrent)",
-      "layout": "vertical stack of 3",
-      "components": [
-        {"name": "ReportGeneratorAgent", "icon": "HTML document", "tool": "generate_html_report", "color": "#E0F7FA"},
-        {"name": "InfographicGeneratorAgent", "icon": "image", "tool": "generate_infographic", "color": "#FFF8E1"},
-        {"name": "AudioOverviewAgent", "icon": "microphone", "tool": "generate_audio_overview", "color": "#F1F8E9"}
-      ]
-    },
-    {
-      "id": "outputs",
-      "position": "right",
-      "color": "#FBBC05",
-      "components": [
-        {"name": "executive_report.html", "icon": "HTML file", "description": "7-slide presentation"},
-        {"name": "infographic.png", "icon": "image file", "description": "Visual summary"},
-        {"name": "audio_overview.wav", "icon": "audio file", "description": "~2-3 min podcast"}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "input", "to": "parallel", "label": "Fork (3 parallel)"},
-    {"from": "parallel", "to": "outputs", "style": "triple arrows"}
-  ],
-  "annotation": {"text": "~40% faster than sequential", "position": "below parallel"}
-}
-```
+Your agent is feature-complete. It takes natural language input and produces strategic reports, visual infographics, and audio briefings. But before you share it with stakeholders or deploy it to production, you need confidence that it actually works reliably.
 
-</details>
+LLM-based agents are notoriously hard to test. Outputs vary between runs, external APIs return different data, and "correct" is often subjective. How do you validate something that doesn't give deterministic outputs?
+
+In **[Part 8: Testing](./08-testing.md)**, you'll establish a testing strategy that handles this uncertainty. You'll learn to write unit tests for schemas and configurations, integration tests for individual agents, and evaluations that measure quality over time.
+
+You'll learn:
+- **Unit tests** for schemas, tools, and configurations (fast, no API calls)
+- **Integration tests** for individual agents with real API calls
+- **ADK evalsets** for measuring agent quality over time
+- Testing strategies for non-deterministic LLM outputs
+
+---
+
+**[← Back to Part 6: Strategy Synthesis](./06-strategy-synthesis.md)** | **[Continue to Part 8: Testing →](./08-testing.md)**

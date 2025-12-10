@@ -1,65 +1,61 @@
 # Bonus: AG-UI Interactive Dashboard
 
-By the end of this bonus part, you'll have a rich interactive frontend for your agent with real-time pipeline visualization.
+The ADK Web UI at `localhost:8501` works great for development, but what if you want something richer? A polished dashboard where stakeholders can watch the pipeline unfold in real-time, see competitor data rendered as interactive cards, and explore strategic recommendations without understanding the technical details?
 
-**What You'll Build**: A Next.js dashboard that shows live agent progress, competitor data, and strategic recommendations as they're generated.
+This bonus part shows you how to build exactly that—a Next.js frontend that connects to your agent using the AG-UI Protocol. The result is a professional dashboard with real-time progress visualization, generative UI components, and bidirectional state synchronization between your agent and the browser.
+
+<p align="center">
+  <img src="assets/bonus_architecture.jpeg" alt="Bonus: AG-UI Interactive Dashboard Architecture" width="600">
+</p>
 
 ---
 
 ## Beyond ADK Web
 
-ADK Web at `localhost:8501` is great for development, but for stakeholder demos and richer interaction, you might want:
+The ADK Web UI is designed for developers. It shows raw state, tool calls, and agent traces—everything you need to debug and iterate. But for stakeholder demos and end-user experiences, you might want:
 
-- **Real-time progress visualization**: Watch each pipeline stage complete
-- **Generative UI**: Rich cards and charts that appear inline in chat
-- **Interactive dashboards**: Location scores, competitor stats, market cards
-- **Bidirectional state sync**: Frontend and agent share state automatically
+| Capability | Why It Matters |
+|------------|----------------|
+| **Real-time progress visualization** | Watch each pipeline stage complete with visual feedback |
+| **Generative UI** | Rich cards and charts that appear inline in the chat |
+| **Interactive dashboards** | Location scores, competitor stats, and market cards |
+| **Bidirectional state sync** | Frontend and agent share state automatically |
 
-The [AG-UI Protocol](https://docs.ag-ui.com/) with [CopilotKit](https://docs.copilotkit.ai/) provides exactly this.
+The [AG-UI Protocol](https://docs.ag-ui.com/) combined with [CopilotKit](https://docs.copilotkit.ai/) provides exactly this. The protocol defines how frontends communicate with AI agents, while CopilotKit provides React hooks that make integration straightforward.
 
 ---
 
-## Architecture
+## How It Works
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Next.js)                       │
-│  CopilotSidebar │ useCoAgent │ useCoAgentStateRender            │
-└───────────────────────────────│─────────────────────────────────┘
-                                │
-                      AG-UI Protocol (SSE Events)
-                                │
-┌───────────────────────────────│─────────────────────────────────┐
-│                    Backend (FastAPI + ADK)                       │
-│               ADKAgent Middleware → root_agent                   │
-└─────────────────────────────────────────────────────────────────┘
-```
+The architecture is simple. Your existing ADK agent stays exactly as you built it in Parts 1-7. A thin FastAPI layer wraps the agent with AG-UI protocol support. The Next.js frontend connects to this layer and receives real-time state updates via Server-Sent Events (SSE).
 
-**Key concept**: The frontend connects to a thin FastAPI layer that wraps your existing ADK agent. The agent code stays unchanged.
+The key insight is that your callbacks from earlier parts—the ones that set `pipeline_stage` and `stages_completed`—are already doing the work. The frontend just reads that state and renders it beautifully.
 
 ---
 
 ## Quick Start
 
-The project includes Makefile targets for easy setup:
+The project includes Makefile targets that handle the entire setup:
 
 ```bash
-# First time: Install dependencies
+# First time: Install dependencies for both backend and frontend
 make ag-ui-install
 
 # Start both servers
 make ag-ui
 ```
 
-This runs:
-- **Backend** at `http://localhost:8000` - FastAPI server with AG-UI middleware
-- **Frontend** at `http://localhost:3000` - Next.js dashboard
+This runs two servers concurrently:
+- **Backend** at `http://localhost:8000` — FastAPI server with AG-UI middleware
+- **Frontend** at `http://localhost:3000` — Next.js dashboard with CopilotKit
+
+Open `http://localhost:3000`, type a query like "I want to open a coffee shop in Indiranagar, Bangalore," and watch the dashboard come alive as your agent works through each stage.
 
 ---
 
 ## The Backend Wrapper
 
-The backend is minimal - it wraps your existing agent without modifications:
+The backend is remarkably minimal. It wraps your existing agent without requiring any modifications to the agent code itself:
 
 ```python
 # app/frontend/backend/main.py
@@ -93,16 +89,13 @@ app.add_middleware(
 add_adk_fastapi_endpoint(app, adk_agent, path="/")
 ```
 
-**Key points:**
-- `from app.agent import root_agent` - Uses your exact same agent
-- `ADKAgent` wraps it with AG-UI protocol support
-- No agent code modifications needed
+The critical line is `from app.agent import root_agent`—it imports your exact same agent. The `ADKAgent` wrapper adds AG-UI protocol support, translating the agent's state changes into SSE events that the frontend can consume. No changes to your carefully crafted prompts, tools, or callbacks.
 
 ---
 
 ## The Frontend Page
 
-The main page connects to the agent and renders state:
+The main page connects to the agent and renders its state. CopilotKit provides two key hooks that make this work:
 
 ```tsx
 // app/frontend/app/page.tsx
@@ -183,50 +176,50 @@ export default function Home() {
 }
 ```
 
-**Key hooks:**
-- `useCoAgent` - Connects to agent state, receives updates via SSE
-- `useCoAgentStateRender` - Renders custom UI inline in the chat sidebar
+The `useCoAgent` hook connects to the agent and receives state updates via SSE. The `useCoAgentStateRender` hook renders custom UI inline in the chat sidebar—this is what creates the "generative UI" effect where rich components appear as the agent works.
+
+> **Learn more:** The [CopilotKit documentation](https://docs.copilotkit.ai/) covers all available hooks and configuration options.
 
 ---
 
 ## State Synchronization
 
-The AG-UI frontend reads state that your callbacks set throughout the pipeline. This is the connection between the agent you built in Parts 2-7 and the dashboard you're adding now.
+Here's where the design decisions from earlier parts pay off. Throughout Parts 2-7, you built callbacks that set state values like `pipeline_stage` and `stages_completed`. The AG-UI frontend reads exactly those values.
 
-**How the callbacks from earlier parts drive the frontend:**
+| State Field | Set By | Used In Frontend |
+|-------------|--------|------------------|
+| `pipeline_stage` | `before_*` callbacks | PipelineTimeline current stage |
+| `stages_completed` | `after_*` callbacks | PipelineTimeline completed stages |
+| `target_location` | IntakeAgent `output_key` | Header card |
+| `business_type` | IntakeAgent `output_key` | Header card |
+| `market_research_findings` | MarketResearchAgent `output_key` | ScrollableMarkdown |
+| `competitor_analysis` | CompetitorMappingAgent `output_key` | CompetitorCard |
+| `gap_analysis` | GapAnalysisAgent `output_key` | TabbedGapAnalysis |
+| `strategic_report` | StrategyAdvisorAgent `output_key` | LocationReport |
 
-| State Field | Set By (From Series) | Callback Function | UI Component |
-|-------------|----------------------|-------------------|--------------|
-| `pipeline_stage` | All before_* callbacks | `before_market_research`, `before_gap_analysis`, etc. | PipelineTimeline |
-| `stages_completed` | All after_* callbacks | `after_market_research`, `after_gap_analysis`, etc. | PipelineTimeline |
-| `target_location` | Part 2: IntakeAgent | `after_intake` | Header card |
-| `business_type` | Part 2: IntakeAgent | `after_intake` | Header card |
-| `market_research_findings` | Part 3: MarketResearchAgent | Agent's `output_key` | ScrollableMarkdown |
-| `competitor_analysis` | Part 4: CompetitorMappingAgent | Agent's `output_key` | CompetitorCard |
-| `gap_analysis` | Part 5: GapAnalysisAgent | Agent's `output_key` | TabbedGapAnalysis |
-| `strategic_report` | Part 6: StrategyAdvisorAgent | Agent's `output_key` | LocationReport |
-
-**This is the payoff of the callback pattern**: Every `before_agent_callback` sets `pipeline_stage` so the timeline knows what's currently running. Every `after_agent_callback` appends to `stages_completed` so the timeline knows what's done. The `output_key` on each agent automatically populates state fields that the frontend reads.
+This is the payoff of the callback pattern. Every `before_agent_callback` sets `pipeline_stage` so the timeline knows what's currently running. Every `after_agent_callback` appends to `stages_completed` so the timeline knows what's done. The `output_key` on each agent automatically populates state fields that the frontend reads.
 
 ```python
-# Example from app/callbacks/pipeline_callbacks.py (Part 3)
+# Example from app/callbacks/pipeline_callbacks.py
 def before_market_research(callback_context: CallbackContext):
-    callback_context.state["pipeline_stage"] = "market_research"  # ← Frontend reads this
+    callback_context.state["pipeline_stage"] = "market_research"  # Frontend reads this
     callback_context.state["current_date"] = datetime.now().strftime("%Y-%m-%d")
     return None
 
 def after_market_research(callback_context: CallbackContext):
     stages = callback_context.state.get("stages_completed", [])
-    stages.append("market_research")  # ← Frontend reads this
+    stages.append("market_research")  # Frontend reads this
     callback_context.state["stages_completed"] = stages
     return None
 ```
 
-Your callbacks in `app/callbacks/pipeline_callbacks.py` already set these state values—the frontend just reads them!
+Your callbacks in `app/callbacks/pipeline_callbacks.py` already set these state values—the frontend just reads them.
 
 ---
 
 ## Project Structure
+
+The frontend code lives in `app/frontend/`, keeping it separate from the core agent code:
 
 ```
 app/frontend/
@@ -265,7 +258,7 @@ app/frontend/
 
 ### PipelineTimeline
 
-Shows the 7-stage pipeline with collapsible steps:
+The timeline shows the 7-stage pipeline with collapsible steps. Each step displays its status (pending, running, complete) and can be expanded to show the output:
 
 ```tsx
 // app/frontend/components/PipelineTimeline.tsx
@@ -282,7 +275,7 @@ const stages = [
 
 ### LocationReport
 
-Displays the top recommendation from `strategic_report`:
+This component displays the top recommendation from `strategic_report` with a visual score and key details:
 
 ```tsx
 // app/frontend/components/LocationReport.tsx
@@ -310,7 +303,7 @@ export function LocationReport({ report }: { report: LocationIntelligenceReport 
 
 ## Manual Setup
 
-If you prefer manual setup:
+If you prefer to set things up manually rather than using the Makefile:
 
 ### Backend
 
@@ -335,7 +328,9 @@ npm run dev
 
 ## Environment Variables
 
-### Backend (`app/.env`)
+The backend uses your existing `app/.env` file. The frontend needs its own configuration:
+
+**Backend (`app/.env`)**
 
 ```bash
 GOOGLE_API_KEY=your_google_api_key
@@ -343,7 +338,7 @@ MAPS_API_KEY=your_google_maps_api_key
 GOOGLE_GENAI_USE_VERTEXAI=FALSE
 ```
 
-### Frontend (`app/frontend/.env.local`)
+**Frontend (`app/frontend/.env.local`)**
 
 ```bash
 NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
@@ -353,24 +348,13 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 
 ## Demo Walkthrough
 
-1. **Open http://localhost:3000**
-   - The CopilotSidebar opens on the right
-   - Main dashboard area shows welcome state
+1. **Open http://localhost:3000** — The CopilotSidebar opens on the right, and the main dashboard area shows a welcome state.
 
-2. **Type a query in the chat**
-   - "I want to open a coffee shop in Indiranagar, Bangalore"
+2. **Type a query in the chat** — "I want to open a coffee shop in Indiranagar, Bangalore"
 
-3. **Watch the pipeline unfold**
-   - Progress indicator appears in chat
-   - Pipeline Timeline shows each stage completing
-   - Collapsible steps reveal stage outputs
+3. **Watch the pipeline unfold** — A progress indicator appears in the chat. The PipelineTimeline shows each stage completing. Collapsible steps reveal stage outputs as they become available.
 
-4. **View the results**
-   - LocationReport card with score and recommendation
-   - CompetitorCard with competition stats
-   - MarketCard with market characteristics
-   - Key Insights list
-   - ArtifactViewer for HTML report and infographic
+4. **View the results** — When complete, you'll see the LocationReport card with score and recommendation, CompetitorCard with competition stats, MarketCard with market characteristics, and an ArtifactViewer for the HTML report and infographic.
 
 ---
 
@@ -400,22 +384,24 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 
 To add a new UI component that responds to agent state:
 
-1. **Add TypeScript interface** to `lib/types.ts`
-2. **Create component** in `components/`
-3. **Import in `app/page.tsx`**
-4. **Add to `useCoAgentStateRender`** for chat display
+1. **Add TypeScript interface** to `lib/types.ts` matching your Pydantic schema
+2. **Create component** in `components/` that renders the state
+3. **Import in `app/page.tsx`** and conditionally render based on state
+4. **Optionally add to `useCoAgentStateRender`** for display in the chat sidebar
 
 ---
 
-## What You've Built
+## What You've Learned
 
-In this bonus part, you:
+In this bonus part, you've connected a rich frontend to your ADK agent:
 
-1. Set up AG-UI Protocol with CopilotKit
-2. Created a FastAPI backend that wraps your ADK agent
-3. Built a Next.js dashboard with real-time state sync
-4. Displayed pipeline progress with collapsible steps
-5. Rendered rich cards for recommendations and insights
+- **AG-UI Protocol** provides the communication layer between frontend and agent
+- **CopilotKit hooks** (`useCoAgent`, `useCoAgentStateRender`) make React integration simple
+- **ADKAgent wrapper** adds protocol support without modifying your agent code
+- **State synchronization** leverages the callbacks you built in earlier parts
+- **Generative UI** creates dynamic components that appear as the agent works
+
+The key insight is that the work you did in Parts 2-7—setting state in callbacks, using `output_key` to save results—directly enables this rich frontend experience.
 
 ---
 
@@ -428,80 +414,21 @@ In this bonus part, you:
 
 | Hook | Purpose |
 |------|---------|
-| `useCoAgent` | Connect to agent state |
-| `useCoAgentStateRender` | Render custom UI in chat |
+| `useCoAgent` | Connect to agent state, receive updates |
+| `useCoAgentStateRender` | Render custom UI inline in chat |
 
----
+**Files referenced in this part:**
 
-**Code files referenced in this part:**
-- [`app/frontend/README.md`](../app/frontend/README.md) - Full documentation
-- [`app/frontend/backend/main.py`](../app/frontend/backend/main.py) - FastAPI wrapper
-- [`app/frontend/app/page.tsx`](../app/frontend/app/page.tsx) - Main page
-- [`app/frontend/components/`](../app/frontend/components/) - UI components
+- [`app/frontend/README.md`](../app/frontend/README.md) — Full frontend documentation
+- [`app/frontend/backend/main.py`](../app/frontend/backend/main.py) — FastAPI wrapper
+- [`app/frontend/app/page.tsx`](../app/frontend/app/page.tsx) — Main page
+- [`app/frontend/components/`](../app/frontend/components/) — UI components
 
 **External Documentation:**
-- [AG-UI Protocol](https://docs.ag-ui.com/)
-- [CopilotKit](https://docs.copilotkit.ai/)
+
+- [AG-UI Protocol](https://docs.ag-ui.com/) — Protocol specification
+- [CopilotKit](https://docs.copilotkit.ai/) — React hooks and components
 
 ---
 
-<details>
-<summary>Image Prompt for This Part</summary>
-
-```json
-{
-  "image_type": "ui_mockup",
-  "style": {
-    "design": "modern web application mockup",
-    "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
-    "layout": "dashboard with sidebar",
-    "aesthetic": "React/Next.js modern UI"
-  },
-  "dimensions": {"aspect_ratio": "16:10", "recommended_width": 1200},
-  "title": {"text": "Bonus: AG-UI Interactive Dashboard", "position": "top center"},
-  "sections": [
-    {
-      "id": "sidebar",
-      "position": "right",
-      "width": "300px",
-      "color": "#4285F4",
-      "components": [
-        {"name": "CopilotSidebar", "content": ["User message", "Agent response", "Progress indicator"]}
-      ]
-    },
-    {
-      "id": "header",
-      "position": "top-left",
-      "components": [
-        {"name": "Title", "text": "Retail AI Location Strategy"},
-        {"name": "Subtitle", "text": "Powered by Google ADK + Gemini"}
-      ]
-    },
-    {
-      "id": "timeline",
-      "position": "main area top",
-      "color": "#E8F5E9",
-      "components": [
-        {"name": "PipelineTimeline", "stages": ["Intake ✓", "Research ✓", "Mapping ✓", "Analysis...", "Strategy", "Report", "Infographic"]}
-      ]
-    },
-    {
-      "id": "cards",
-      "position": "main area bottom",
-      "layout": "grid 2x2",
-      "components": [
-        {"name": "LocationReport", "content": ["Defence Colony", "Score: 78/100", "Opportunity: Residential Premium"]},
-        {"name": "CompetitorCard", "content": ["15 competitors", "Avg rating: 4.3", "Chain: 45%"]},
-        {"name": "MarketCard", "content": ["Population: High", "Income: High", "Traffic: Moderate"]},
-        {"name": "KeyInsights", "content": ["Insight 1", "Insight 2", "Insight 3"]}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "sidebar", "to": "timeline", "label": "State Sync", "style": "bidirectional"}
-  ],
-  "annotation": {"text": "AG-UI Protocol: Real-time state synchronization", "position": "bottom"}
-}
-```
-
-</details>
+**[← Back to Part 9: Production Deployment](./09-production-deployment.md)** | **[Return to Series Overview →](./README.md)**

@@ -1,34 +1,38 @@
 # Part 4: Competitor Mapping with Google Maps API
 
-By the end of this part, your agent will find real competitors using the Google Maps Places API.
+In the previous part, you built the MarketResearchAgent that searches the web for demographics and trends. The research might mention that "Third Wave Coffee and Starbucks have a presence in Indiranagar"—but how many locations exactly? What are their ratings? Are they clustered in certain areas?
 
-**Input**: Market research findings + target location
-**Output**: Real competitor data - names, ratings, reviews, locations
+Web search gives us qualitative intelligence, but for competitive analysis, we need **ground-truth data**. In this part, you'll build a custom tool that queries the Google Maps Places API to get real competitor information—names, addresses, ratings, review counts, and operational status.
 
----
-
-## From Research to Reality
-
-Web search gives us market trends and demographics. But for competitors, we need ground-truth data:
-
-- Actual business names and locations
-- Star ratings and review counts
-- Whether they're still operational
-- Geographic clustering patterns
-
-The **CompetitorMappingAgent** uses a custom tool that calls the Google Maps Places API.
+<p align="center">
+  <img src="assets/part4_api_integration_diagram.jpeg" alt="Part 4: CompetitorMappingAgent - Google Maps API Integration" width="600">
+</p>
 
 ---
 
-## Building a Custom Tool
+## Why Custom Tools Matter
 
-ADK tools are Python functions. The `search_places` tool wraps the Google Maps Places API.
+ADK's built-in tools like `google_search` are powerful, but they can't cover every use case. When you need to:
 
-### The Tool Definition
+- Call a specific API with authentication
+- Transform data into a particular format
+- Access services that aren't built into ADK
+
+You build a **custom tool**. Custom tools are Python functions that your agents can call, just like built-in tools. They receive a `ToolContext` parameter that gives them access to session state, and they return structured data that the agent can reason about.
+
+The Google Maps Places API is a perfect example. It provides structured competitor data—not snippets from web pages, but actual business listings with ratings, review counts, addresses, and coordinates. This is the kind of ground-truth data that makes competitive analysis reliable.
+
+---
+
+## Anatomy of a Custom Tool
+
+Let's build the `search_places` tool step by step. The complete implementation is in `app/tools/places_search.py`.
+
+### The Function Signature
+
+Every ADK tool follows the same pattern:
 
 ```python
-# app/tools/places_search.py
-import os
 from google.adk.tools import ToolContext
 
 def search_places(query: str, tool_context: ToolContext) -> dict:
@@ -51,28 +55,31 @@ def search_places(query: str, tool_context: ToolContext) -> dict:
     """
 ```
 
-### Tool Parameters
+Notice the docstring—it's not just documentation. ADK sends this description to Gemini, which uses it to understand when and how to call the tool. A well-written docstring helps the model make better decisions about tool usage.
 
-| Parameter | Type | Purpose |
-|-----------|------|---------|
-| `query` | `str` | Search query the agent constructs |
-| `tool_context` | `ToolContext` | Access to session state |
+### Understanding ToolContext
 
-**Why `ToolContext`?**
+The `tool_context` parameter is your bridge to ADK's runtime:
 
-It provides access to:
-- `tool_context.state` - Session state (e.g., API keys)
-- `tool_context.save_artifact()` - Save files like images/HTML
+| Property | Purpose |
+|----------|---------|
+| `tool_context.state` | Read/write session state (API keys, intermediate data) |
+| `tool_context.save_artifact()` | Save files like images, HTML, or audio |
+
+For our Places API tool, we use `tool_context.state` to retrieve the API key. This is cleaner than hardcoding credentials and allows the key to be injected from environment variables at runtime.
+
+> **Learn more:** The [ToolContext documentation](https://google.github.io/adk-docs/tools/function-tools/#tool-context) covers all available methods.
 
 ### The Implementation
 
+Here's the core logic:
+
 ```python
-# app/tools/places_search.py
 def search_places(query: str, tool_context: ToolContext) -> dict:
     try:
         import googlemaps
 
-        # Get API key from session state first, then fall back to environment variable
+        # Get API key from state or environment
         maps_api_key = tool_context.state.get("maps_api_key", "") or os.environ.get("MAPS_API_KEY", "")
 
         if not maps_api_key:
@@ -123,25 +130,31 @@ def search_places(query: str, tool_context: ToolContext) -> dict:
         }
 ```
 
-### What the Tool Returns
+A few things to notice:
 
-Each place includes:
+**Graceful error handling.** The tool wraps everything in try/except and returns a structured error response. This is important—if a tool throws an exception, the agent can't reason about what went wrong. By returning `{"status": "error", "error_message": "..."}`, we give the agent information it can act on.
+
+**Consistent return structure.** Every return path includes `status`, `results`, and `count`. The agent knows what to expect and can reliably extract data.
+
+**Data transformation.** We don't return the raw Google Maps response. Instead, we extract the fields that matter for competitive analysis and format them consistently. This makes the agent's job easier.
+
+### What Each Place Contains
 
 | Field | Description |
 |-------|-------------|
-| `name` | Business name |
-| `address` | Full address |
-| `rating` | Star rating (0-5) |
-| `user_ratings_total` | Number of reviews |
-| `price_level` | Price tier (1-4) |
-| `business_status` | OPERATIONAL, CLOSED, etc. |
-| `location` | Lat/lng coordinates |
+| `name` | Business name (e.g., "Third Wave Coffee - Indiranagar") |
+| `address` | Full formatted address |
+| `rating` | Star rating from 0-5 |
+| `user_ratings_total` | Number of reviews (social proof) |
+| `price_level` | Price tier 1-4 (where available) |
+| `business_status` | OPERATIONAL, CLOSED_TEMPORARILY, etc. |
+| `location` | Latitude/longitude for mapping |
 
 ---
 
 ## The Agent Instruction
 
-The instruction guides the agent to use the tool effectively:
+With the tool built, we need to tell the agent how to use it effectively. The instruction combines the "what" (competitive analysis) with the "how" (calling the tool):
 
 ```python
 COMPETITOR_MAPPING_INSTRUCTION = """You are a market intelligence analyst specializing in competitive landscape analysis.
@@ -197,18 +210,21 @@ Provide a detailed competitor map with:
 """
 ```
 
-The instruction tells the agent:
-1. **How** to call the tool
-2. **What** to extract from results
-3. **How** to analyze patterns
-4. **What** insights to provide
+This instruction does several things well:
+
+**Clear tool guidance.** It explicitly tells the agent to use `search_places` and shows example queries. Without this, the agent might try to use `google_search` instead.
+
+**Analytical framework.** The "Geographic Clustering" and "Quality Segmentation" sections give the agent a framework for analysis. Rather than just dumping data, it produces insights.
+
+**Actionable output.** The instruction asks for "strategic opportunities and saturation warnings"—outputs that directly inform business decisions.
 
 ---
 
 ## Building the CompetitorMappingAgent
 
+The agent definition ties everything together:
+
 ```python
-# app/sub_agents/competitor_mapping/agent.py
 from google.adk.agents import LlmAgent
 from google.genai import types
 
@@ -236,16 +252,41 @@ competitor_mapping_agent = LlmAgent(
 )
 ```
 
-**Key points:**
-- `tools=[search_places]` - The custom tool we built
-- `output_key="competitor_analysis"` - Saves results for next agents
+The key parameters:
+
+- `tools=[search_places]` — Our custom tool, imported from the tools package
+- `output_key="competitor_analysis"` — The agent's output is saved to state, making it available for the GapAnalysisAgent
+
+> **Learn more:** The [Custom Tools documentation](https://google.github.io/adk-docs/tools/function-tools/) covers advanced patterns like async tools and tools that save artifacts.
 
 ---
 
-## The Callbacks
+## Exporting the Tool
+
+For the agent to import the tool, it needs to be exported from the tools package:
 
 ```python
-# app/callbacks/pipeline_callbacks.py
+# app/tools/__init__.py
+from .places_search import search_places
+
+__all__ = ["search_places"]
+```
+
+This follows Python's package conventions and allows clean imports:
+
+```python
+from ...tools import search_places
+```
+
+As you add more tools (HTML generation, image generation, audio), they all get exported from `app/tools/__init__.py`.
+
+---
+
+## Lifecycle Callbacks
+
+The callbacks follow the same pattern as MarketResearchAgent—logging and state tracking:
+
+```python
 def before_competitor_mapping(callback_context: CallbackContext) -> Optional[types.Content]:
     """Log start of competitor mapping phase."""
     logger.info("=" * 60)
@@ -253,7 +294,6 @@ def before_competitor_mapping(callback_context: CallbackContext) -> Optional[typ
     logger.info("  Using Google Maps Places API for real competitor data...")
     logger.info("=" * 60)
 
-    # Set current date for state injection
     callback_context.state["current_date"] = datetime.now().strftime("%Y-%m-%d")
     callback_context.state["pipeline_stage"] = "competitor_mapping"
 
@@ -274,80 +314,31 @@ def after_competitor_mapping(callback_context: CallbackContext) -> Optional[type
     return None
 ```
 
----
-
-## Exporting the Tool
-
-Tools need to be exported from the tools package:
-
-```python
-# app/tools/__init__.py
-from .places_search import search_places
-
-__all__ = ["search_places"]
-```
-
-This allows importing as:
-```python
-from ...tools import search_places
-```
+The logging makes it easy to track pipeline progress in the terminal, and `stages_completed` enables UI progress indicators.
 
 ---
 
-## The Pipeline So Far
+## Testing the CompetitorMappingAgent
 
-```
-User Query
-    │
-    ▼
-┌─────────────┐
-│IntakeAgent  │ → target_location, business_type
-└─────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│     LocationStrategyPipeline            │
-├─────────────────────────────────────────┤
-│  ┌───────────────────────┐              │
-│  │MarketResearchAgent    │ → market_research_findings
-│  │ tools: [google_search]│              │
-│  └───────────────────────┘              │
-│              │                          │
-│              ▼                          │
-│  ┌───────────────────────┐              │
-│  │CompetitorMappingAgent │ ◄── YOU ARE HERE
-│  │ tools: [search_places]│              │
-│  │ output_key:           │              │
-│  │   "competitor_        │              │
-│  │    analysis"          │              │
-│  └───────────────────────┘              │
-│              │                          │
-│              ▼                          │
-│  [Next: GapAnalysisAgent]               │
-└─────────────────────────────────────────┘
-```
-
----
-
-## Try It!
-
-Run the agent:
+Start the development server and try a query:
 
 ```bash
 make dev
 ```
 
-Try: "I want to open a coffee shop in Indiranagar, Bangalore"
+Open `http://localhost:8501` and enter:
 
-Watch for competitor data in the output. You'll see real business names like:
-- Third Wave Coffee
-- Starbucks
+> "I want to open a coffee shop in Indiranagar, Bangalore"
+
+After IntakeAgent parses the request and MarketResearchAgent gathers market data, you'll see CompetitorMappingAgent call the Places API. Real business names appear in the output:
+
+- Third Wave Coffee - Indiranagar
+- Starbucks - 100 Feet Road
 - Blue Tokai Coffee Roasters
+- Dyu Art Cafe
 - Local cafes with their actual ratings
 
-The `competitor_analysis` state will contain the full analysis.
-
-### Example Output
+In the **State** panel, `competitor_analysis` contains the full analysis. Here's what you might see:
 
 ```
 ## Competitor Analysis: Coffee Shops in Indiranagar, Bangalore
@@ -376,41 +367,31 @@ The `competitor_analysis` state will contain the full analysis.
 
 **Premium (4.5+):** Third Wave Coffee, Blue Tokai, Dyu Art Cafe
 **Mid-Market (4.0-4.4):** Starbucks, Cafe Coffee Day
-**Budget/Casual:** Local cafes
+**Budget/Casual:** Local cafes with lower ratings
 
 ### Strategic Insights
 
-1. **Saturation Warning:** 100 Feet Road is highly saturated
+1. **Saturation Warning:** 100 Feet Road is highly saturated with 6 competitors
 2. **Opportunity:** Near Indiranagar Metro (East exit) has foot traffic but fewer options
-3. **Quality Gap:** Limited premium specialty coffee near residential areas
+3. **Quality Gap:** Limited premium specialty coffee near residential areas in Defence Colony
 ```
+
+This is structured, actionable competitive intelligence built from real data.
 
 ---
 
 ## What You've Learned
 
-In this part, you:
+In this part, you've built a custom tool and seen how ADK integrates external APIs into agent workflows:
 
-1. Built a custom tool that calls an external API
-2. Used `ToolContext` to access state (API keys)
-3. Structured tool return values for agent consumption
-4. Wrote instructions that guide effective tool use
-5. Saw real competitor data from Google Maps
+- **Custom tools** are Python functions with a `ToolContext` parameter
+- **Docstrings matter** — ADK sends them to the model to guide tool usage
+- **ToolContext** provides access to session state and artifact storage
+- **Structured returns** with consistent fields help agents reason about results
+- **Error handling** should return structured errors, not throw exceptions
+- **Tool exports** follow standard Python package patterns
 
----
-
-## Next Up
-
-We have qualitative data (market research) and quantitative data (competitor ratings, review counts). But how do we turn 15 competitors with various ratings across 4 zones into a recommendation? What's the saturation index? Which zone has the best viability score?
-
-LLMs are great at reasoning, but they struggle with arithmetic. Ask an LLM to calculate a weighted average across 15 data points and it might hallucinate. Better to have it *write code* that computes exactly.
-
-In [Part 5: Code Execution](./05-code-execution.md), we'll add the **GapAnalysisAgent** that writes and executes Python code to calculate viability scores, saturation indices, and zone rankings. The agent doesn't just reason about numbers—it writes pandas code, runs it in a sandboxed environment, and interprets the results.
-
-You'll learn:
-- **BuiltInCodeExecutor** for safe, sandboxed code execution
-- Prompt design for reliable code generation
-- Extracting executed code from callbacks for transparency
+This pattern—wrapping an external API in a tool with good documentation and error handling—applies to any service you want to integrate: payment APIs, CRMs, databases, or custom backends.
 
 ---
 
@@ -418,83 +399,41 @@ You'll learn:
 
 | Concept | Implementation |
 |---------|---------------|
-| Custom tool | `def tool_name(args, tool_context: ToolContext) -> dict` |
+| Tool signature | `def tool_name(args, tool_context: ToolContext) -> dict` |
 | Access state | `tool_context.state.get("key")` |
-| Return format | Always return a dict with status, results, etc. |
+| Return format | Always return dict with `status`, `results`, etc. |
 | Register tool | `tools=[my_tool]` in agent definition |
-| Export tool | Add to `__all__` in `__init__.py` |
+| Export tool | Add to `__all__` in `app/tools/__init__.py` |
 
----
+**Files referenced in this part:**
 
-**Code files referenced in this part:**
-- [`app/tools/places_search.py`](../app/tools/places_search.py) - Custom tool
-- [`app/sub_agents/competitor_mapping/agent.py`](../app/sub_agents/competitor_mapping/agent.py) - Agent
-- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) - Callbacks
+- [`app/tools/places_search.py`](../app/tools/places_search.py) — Custom Places API tool
+- [`app/sub_agents/competitor_mapping/agent.py`](../app/sub_agents/competitor_mapping/agent.py) — CompetitorMappingAgent
+- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) — Lifecycle callbacks
+- [`app/tools/__init__.py`](../app/tools/__init__.py) — Tool exports
 
 **ADK Documentation:**
-- [Custom Tools](https://google.github.io/adk-docs/tools/function-tools/)
-- [ToolContext](https://google.github.io/adk-docs/tools/function-tools/#tool-context)
+
+- [Custom Function Tools](https://google.github.io/adk-docs/tools/function-tools/) — Building tools from Python functions
+- [ToolContext](https://google.github.io/adk-docs/tools/function-tools/#tool-context) — Accessing state and saving artifacts
+- [Tool Best Practices](https://google.github.io/adk-docs/tools/) — Patterns for reliable tools
 
 ---
 
-<details>
-<summary>Image Prompt for This Part</summary>
+## Next: Code Execution for Quantitative Analysis
 
-```json
-{
-  "image_type": "api_integration_diagram",
-  "style": {
-    "design": "clean, modern technical diagram",
-    "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
-    "layout": "horizontal with API callout",
-    "aesthetic": "minimalist, vector-style"
-  },
-  "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1100},
-  "title": {"text": "Part 4: CompetitorMappingAgent - Google Maps Integration", "position": "top center"},
-  "sections": [
-    {
-      "id": "previous",
-      "position": "left",
-      "color": "#E8F5E9",
-      "components": [
-        {"name": "IntakeAgent", "icon": "checkmark"},
-        {"name": "MarketResearchAgent", "icon": "checkmark"},
-        {"name": "market_research_findings", "status": "available"}
-      ]
-    },
-    {
-      "id": "current",
-      "position": "center",
-      "color": "#34A853",
-      "components": [
-        {"name": "CompetitorMappingAgent", "icon": "map pin"},
-        {"name": "Custom Tool: search_places", "icon": "function/code"}
-      ]
-    },
-    {
-      "id": "api",
-      "position": "below center",
-      "color": "#EA4335",
-      "components": [
-        {"name": "Google Maps Places API", "icon": "Google Maps logo", "data": ["Names", "Ratings", "Reviews", "Addresses"]}
-      ]
-    },
-    {
-      "id": "output",
-      "position": "right",
-      "color": "#FBBC05",
-      "components": [
-        {"name": "competitor_analysis", "icon": "data table", "rows": ["Competitor 1: 4.5 stars", "Competitor 2: 4.2 stars", "..."]}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "previous", "to": "current"},
-    {"from": "current", "to": "api", "label": "API Call", "style": "dashed"},
-    {"from": "api", "to": "current", "label": "Response"},
-    {"from": "current", "to": "output"}
-  ]
-}
-```
+We now have qualitative data (market research) and structured competitor data (names, ratings, review counts across multiple zones). But how do we synthesize this into a recommendation? What's the saturation index for each zone? Which area has the best viability score when we weight foot traffic, competition density, and average competitor ratings?
 
-</details>
+LLMs are excellent at reasoning, but they struggle with arithmetic. Ask a model to calculate weighted averages across 15 data points and it might hallucinate results. The solution is to have the model **write code** that computes exactly.
+
+In **[Part 5: Code Execution](./05-code-execution.md)**, you'll build the GapAnalysisAgent that writes and executes Python code. Using ADK's `BuiltInCodeExecutor`, the agent generates pandas code, runs it in a sandboxed environment, and interprets the numerical results. No more arithmetic errors—just precise calculations.
+
+You'll learn:
+- Using `BuiltInCodeExecutor` for safe, sandboxed code execution
+- Prompt design for reliable code generation
+- Extracting and logging executed code for transparency
+- When to use code execution vs. letting the model reason directly
+
+---
+
+**[← Back to Part 3: Market Research](./03-market-research.md)** | **[Continue to Part 5: Code Execution →](./05-code-execution.md)**

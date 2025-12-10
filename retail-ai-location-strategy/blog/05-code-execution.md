@@ -1,37 +1,36 @@
 # Part 5: Quantitative Analysis with Code Execution
 
-By the end of this part, your agent will write and run Python code to calculate viability scores.
+In the previous parts, you built agents that gather qualitative intelligence—market research from web searches and competitor data from Google Maps. But now comes the hard part: synthesizing all this information into actionable recommendations. Which zone has the best viability? How saturated is the market? What's the optimal trade-off between competition density and foot traffic?
 
-**Input**: Market research + competitor data
-**Output**: Calculated saturation indices, viability scores, and zone rankings
+These questions require precise calculations, and that's where LLMs struggle. Ask a model to compute a weighted average across 15 data points, and it might hallucinate results. The solution is to have the model **write code** that computes exactly.
+
+<p align="center">
+  <img src="assets/part5_concept_diagram.jpeg" alt="Part 5: GapAnalysisAgent - Code Execution Concept" width="600">
+</p>
 
 ---
 
 ## When LLMs Need to Calculate
 
-LLMs can reason about data, but they struggle with:
-- Precise arithmetic
-- Statistical calculations
-- Complex multi-step computations
-- Dynamic data analysis
+Large language models excel at reasoning, pattern recognition, and generating human-like text. But they have a fundamental weakness: arithmetic precision. Even simple calculations can go wrong when the model "thinks through" them rather than computing them.
 
-The **GapAnalysisAgent** solves this by writing and executing Python code.
+Consider the analysis our agent needs to perform. We have 15 competitors across 5 zones, each with ratings, review counts, and business classifications. We need to calculate:
 
-### The Precision Problem
+- **Saturation indices** based on competitor density and quality
+- **Viability scores** using weighted multi-factor formulas
+- **Zone rankings** that account for chain dominance, infrastructure, and costs
 
-Consider this: If an LLM needs to calculate a viability score based on:
-- 15 competitors with various ratings
-- Population density estimates
-- Infrastructure quality factors
-- Weighted multi-factor formulas
+Asking the LLM to reason through these calculations leads to errors. A better approach: have the model write Python code that executes these calculations precisely. The model's strength—understanding what to compute—combines with code's strength—computing it accurately.
 
-Asking the LLM to "think through" this leads to errors. Better to have it write code that computes exactly.
+<p align="center">
+  <img src="assets/part5_code_execution_diagram.jpeg" alt="Part 5: GapAnalysisAgent - Code Execution Flow" width="600">
+</p>
 
 ---
 
-## BuiltInCodeExecutor
+## BuiltInCodeExecutor: Safe, Sandboxed Execution
 
-ADK provides `BuiltInCodeExecutor` for Gemini's native code execution:
+ADK provides `BuiltInCodeExecutor` for Gemini's native code execution capability. This is remarkably different from traditional approaches where you'd need to set up a code sandbox, manage execution environments, and handle security concerns.
 
 ```python
 from google.adk.code_executors import BuiltInCodeExecutor
@@ -42,19 +41,17 @@ gap_analysis_agent = LlmAgent(
 )
 ```
 
-**What it does:**
-1. Agent writes Python code
-2. Gemini executes the code in a sandboxed environment
-3. Output is captured and returned
-4. Agent interprets the results
+When you add a code executor to an agent, something interesting happens. The agent gains the ability to write Python code, have Gemini execute it in a sandboxed environment, capture the output, and then interpret the results. All of this happens within Gemini's infrastructure—no server-side execution needed on your end.
 
-No server-side code execution needed - it happens within Gemini's infrastructure.
+The sandbox is secure by design. The executed code can't access your file system, can't make network requests, and can't escape its isolated environment. It has access to standard Python libraries like `pandas` and `numpy`, which is exactly what we need for data analysis.
+
+> **Learn more:** The [Code Execution documentation](https://google.github.io/adk-docs/tools/code-execution/) covers executor types and configuration options.
 
 ---
 
 ## The Analysis Instruction
 
-The instruction guides the agent to write structured analysis code:
+The instruction prompt is where we define what the agent should calculate and how. This is a longer instruction than our previous agents because we're essentially writing a specification for the code the agent will generate.
 
 ```python
 GAP_ANALYSIS_INSTRUCTION = """You are a data scientist analyzing market opportunities using quantitative methods.
@@ -123,15 +120,13 @@ Execute the code and provide actionable strategic recommendations.
 """
 ```
 
-**Key aspects:**
-- Provides all previous data via state injection
-- Specifies exact calculations to perform
-- Gives weighting for scoring
-- Requests clear output formatting
+Several aspects of this instruction are worth noting. First, it provides all previous data via state injection—`{market_research_findings}` and `{competitor_analysis}` pull in the outputs from earlier pipeline stages. Second, it specifies exact calculations with explicit weightings, giving the model a clear formula to implement. Finally, it requests pandas for data manipulation, which is available in the sandbox environment.
 
 ---
 
 ## Building the GapAnalysisAgent
+
+With the instruction defined, the agent definition is straightforward:
 
 ```python
 # app/sub_agents/gap_analysis/agent.py
@@ -162,19 +157,25 @@ gap_analysis_agent = LlmAgent(
 )
 ```
 
-**Key parameters:**
+The key parameters here:
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
 | `model` | `CODE_EXEC_MODEL` | Model optimized for code generation |
-| `code_executor` | `BuiltInCodeExecutor()` | Enables code execution |
-| `output_key` | `"gap_analysis"` | Saves results for next agent |
+| `code_executor` | `BuiltInCodeExecutor()` | Enables sandboxed code execution |
+| `output_key` | `"gap_analysis"` | Saves analysis results for downstream agents |
+
+We use `CODE_EXEC_MODEL` from our config because some models are better at generating reliable, executable code. The model needs to understand not just what to calculate, but how to write syntactically correct Python that handles edge cases.
+
+> **Learn more:** The [BuiltInCodeExecutor reference](https://google.github.io/adk-docs/tools/code-execution/#built-in-code-executor) covers advanced configuration.
 
 ---
 
-## Extracting Executed Code
+## Extracting Executed Code for Transparency
 
-The after callback extracts the Python code the agent wrote:
+One of the challenges with code execution is visibility. The agent writes code, Gemini executes it, and we see the results—but what exactly was executed? For debugging, reproducibility, and transparency, we want to extract and save the Python code.
+
+The after callback handles this extraction:
 
 ```python
 # app/callbacks/pipeline_callbacks.py
@@ -203,14 +204,11 @@ def after_gap_analysis(callback_context: CallbackContext) -> Optional[types.Cont
     return None
 ```
 
-### Why Extract the Code?
+Having `gap_analysis_code` in state serves multiple purposes. During development, you can see exactly what was executed when debugging unexpected results. For production systems, you can log the code for audit trails. And if you want to show users the methodology, the extracted code provides complete transparency into how scores were calculated.
 
-Having `gap_analysis_code` in state is useful for:
-- Debugging: See exactly what was executed
-- Reproducibility: Re-run the same analysis
-- Transparency: Show users the methodology
+### The Extraction Helpers
 
-### Helper Functions
+The extraction process tries two approaches. First, it looks for Python code blocks in the markdown output:
 
 ```python
 def _extract_python_code_from_content(content: str) -> str:
@@ -231,48 +229,15 @@ def _extract_python_code_from_content(content: str) -> str:
             code_blocks.append(code)
 
     return "\n\n# ---\n\n".join(code_blocks)
-
-
-def _extract_code_from_invocation(callback_context: CallbackContext) -> str:
-    """Extract Python code from invocation context session events."""
-    code_blocks = []
-
-    try:
-        invocation = getattr(callback_context, '_invocation_context', None)
-        if not invocation:
-            return ""
-
-        session = getattr(invocation, 'session', None)
-        if not session:
-            return ""
-
-        events = getattr(session, 'events', None) or []
-
-        for event in events:
-            content = getattr(event, 'content', None)
-            if not content:
-                continue
-
-            parts = getattr(content, 'parts', None) or []
-            for part in parts:
-                # Check for executable_code (Gemini native code execution)
-                exec_code = getattr(part, 'executable_code', None)
-                if exec_code:
-                    code = getattr(exec_code, 'code', None)
-                    if code and code.strip():
-                        code_blocks.append(code.strip())
-
-    except Exception as e:
-        logger.warning(f"Error extracting code: {e}")
-
-    return "\n\n# --- Next Code Block ---\n\n".join(code_blocks)
 ```
+
+If that doesn't find code, it looks in the invocation context for `executable_code` parts, which is how Gemini's native code execution stores the code that was run.
 
 ---
 
-## Example: What the Agent Writes
+## What the Agent Actually Produces
 
-Given competitor data, the agent might write:
+Let's look at a real example. Given competitor data from the previous stage, the GapAnalysisAgent might write and execute code like this:
 
 ```python
 import pandas as pd
@@ -321,7 +286,7 @@ print("\nTop Recommended Zone:", zone_metrics.index[0])
 print("Viability Score:", round(zone_metrics['viability_score'].iloc[0], 1))
 ```
 
-**Output:**
+The execution output:
 
 ```
 Zone Analysis Results:
@@ -335,83 +300,43 @@ Top Recommended Zone: Defence Colony
 Viability Score: 78.5
 ```
 
----
-
-## The Pipeline So Far
-
-```
-User Query
-    │
-    ▼
-┌─────────────┐
-│IntakeAgent  │ → target_location, business_type
-└─────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│     LocationStrategyPipeline            │
-├─────────────────────────────────────────┤
-│  MarketResearchAgent → market_research_findings
-│              │
-│              ▼
-│  CompetitorMappingAgent → competitor_analysis
-│              │
-│              ▼
-│  ┌───────────────────────┐              │
-│  │  GapAnalysisAgent     │ ◄── YOU ARE HERE
-│  │  code_executor:       │              │
-│  │    BuiltInCodeExecutor│              │
-│  │  output_key:          │              │
-│  │    "gap_analysis"     │              │
-│  └───────────────────────┘              │
-│              │                          │
-│              ▼                          │
-│  [Next: StrategyAdvisorAgent]           │
-└─────────────────────────────────────────┘
-```
+This is precise, reproducible analysis. Defence Colony ranks highest because it has low competition (only 2 competitors), no chain dominance (0% chain ratio), and good average ratings. The 100 Feet Road zone, despite having highly-rated establishments, scores lowest due to saturation (6 competitors, 67% chains).
 
 ---
 
-## Try It!
+## Testing the GapAnalysisAgent
 
-Run the agent:
+Start the development server and run through a complete analysis:
 
 ```bash
 make dev
 ```
 
-Try a query and watch the gap analysis stage. In the output, you'll see:
-- Python code being executed
-- DataFrames with zone metrics
-- Viability scores and rankings
+Open `http://localhost:8501` and enter a query like:
 
-Check the state for:
-- `gap_analysis`: The full analysis output
-- `gap_analysis_code`: The Python code that was executed
+> "I want to open a coffee shop in Indiranagar, Bangalore"
+
+Watch the pipeline progress through market research, competitor mapping, and then gap analysis. In the output, you'll see the Python code being executed and the resulting DataFrames with zone metrics.
+
+In the **State** panel, look for:
+- `gap_analysis` — The full analysis output including interpretation
+- `gap_analysis_code` — The raw Python code that was executed
+
+The code extraction is particularly useful for debugging. If a viability score seems off, you can see exactly how it was calculated.
 
 ---
 
 ## What You've Learned
 
-In this part, you:
+In this part, you've seen how ADK enables agents to combine reasoning with computation:
 
-1. Used `BuiltInCodeExecutor` for dynamic code execution
-2. Designed instructions that guide reliable code generation
-3. Extracted executed code from the callback context
-4. Saw how agents combine reasoning with computation
+- **BuiltInCodeExecutor** provides sandboxed Python execution within Gemini's infrastructure
+- **Detailed instructions** guide the model to write reliable, structured code
+- **Code extraction** in callbacks enables debugging and transparency
+- **State injection** passes upstream data into the code generation context
+- **Pandas** and other libraries are available in the sandbox for data manipulation
 
----
-
-## Next Up
-
-We now have quantitative data: viability scores, saturation indices, and zone rankings. But numbers alone don't make decisions. How do we weigh a zone with 78% viability but higher rent against one with 65% viability but prime foot traffic?
-
-In [Part 6: Strategy Synthesis](./06-strategy-synthesis.md), we'll add the **StrategyAdvisorAgent** that uses *extended reasoning* to synthesize all findings into strategic recommendations. This agent doesn't just summarize—it thinks through trade-offs before responding, using Gemini's thinking capability to produce nuanced, consultant-grade insights.
-
-You'll learn:
-- **ThinkingConfig** for "think before responding" behavior
-- Complex Pydantic schemas for structured reports
-- Saving JSON artifacts in callbacks
+This pattern—having the LLM write code rather than perform calculations directly—is powerful for any task requiring precision: financial analysis, statistical modeling, data transformation, or complex business logic.
 
 ---
 
@@ -423,136 +348,34 @@ You'll learn:
 | Code-optimized model | Use `CODE_EXEC_MODEL` from config |
 | Access executed code | Extract from callback context |
 | State injection | Use `{market_research_findings}` in instruction |
+| Available libraries | pandas, numpy, standard Python |
 
----
+**Files referenced in this part:**
 
-**Code files referenced in this part:**
-- [`app/sub_agents/gap_analysis/agent.py`](../app/sub_agents/gap_analysis/agent.py) - Agent
-- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) - Code extraction
+- [`app/sub_agents/gap_analysis/agent.py`](../app/sub_agents/gap_analysis/agent.py) — GapAnalysisAgent definition
+- [`app/callbacks/pipeline_callbacks.py`](../app/callbacks/pipeline_callbacks.py) — Code extraction callbacks
+- [`app/config.py`](../app/config.py) — Model configuration including CODE_EXEC_MODEL
 
 **ADK Documentation:**
-- [Code Execution](https://google.github.io/adk-docs/tools/code-execution/)
-- [BuiltInCodeExecutor](https://google.github.io/adk-docs/tools/code-execution/#built-in-code-executor)
+
+- [Code Execution](https://google.github.io/adk-docs/tools/code-execution/) — Overview of code execution in ADK
+- [BuiltInCodeExecutor](https://google.github.io/adk-docs/tools/code-execution/#built-in-code-executor) — Gemini's native code executor
+- [Session State](https://google.github.io/adk-docs/sessions/state/) — How state flows between agents
 
 ---
 
-<details>
-<summary>Image Prompts for This Part</summary>
+## Next: Strategy Synthesis with Extended Thinking
 
-### Image 1: Pipeline Flow Diagram
+We now have quantitative data—viability scores, saturation indices, and zone rankings. But numbers alone don't make decisions. How do we weigh a zone with 78% viability but higher rent against one with 65% viability but prime foot traffic? What if the "best" zone has no available retail space?
 
-```json
-{
-  "image_type": "code_execution_diagram",
-  "style": {
-    "design": "developer-focused, IDE aesthetic",
-    "color_scheme": "Google Cloud colors with code syntax highlighting",
-    "layout": "vertical flow",
-    "aesthetic": "clean, modern"
-  },
-  "dimensions": {"aspect_ratio": "4:3", "recommended_width": 900},
-  "title": {"text": "Part 5: GapAnalysisAgent - Code Execution", "position": "top center"},
-  "sections": [
-    {
-      "id": "input",
-      "position": "top",
-      "color": "#E8F5E9",
-      "components": [
-        {"name": "competitor_analysis", "icon": "data"},
-        {"name": "market_research_findings", "icon": "data"}
-      ]
-    },
-    {
-      "id": "agent",
-      "position": "center",
-      "color": "#34A853",
-      "components": [
-        {"name": "GapAnalysisAgent", "icon": "robot + code"},
-        {"name": "BuiltInCodeExecutor", "icon": "terminal"}
-      ]
-    },
-    {
-      "id": "code",
-      "position": "center-right",
-      "color": "#263238",
-      "components": [
-        {"name": "Generated Python Code", "icon": "code editor", "snippet": "import pandas as pd\ndf = pd.DataFrame(...)\nviability = calculate_score(...)"}
-      ]
-    },
-    {
-      "id": "output",
-      "position": "bottom",
-      "color": "#FBBC05",
-      "components": [
-        {"name": "gap_analysis", "content": ["Viability: 87/100", "Saturation: Low", "Opportunity: High"]}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "input", "to": "agent"},
-    {"from": "agent", "to": "code", "label": "Generate Code"},
-    {"from": "code", "to": "output", "label": "Execute"}
-  ]
-}
-```
+Strategic decisions require nuanced reasoning that considers trade-offs, constraints, and business context. In **[Part 6: Strategy Synthesis](./06-strategy-synthesis.md)**, you'll build the StrategyAdvisorAgent that uses Gemini's **extended thinking** capability. This agent doesn't just summarize—it thinks through trade-offs before responding, producing consultant-grade strategic recommendations.
 
-### Image 2: Sandboxed Code Execution Concept
+You'll learn:
+- Using **ThinkingConfig** for "think before responding" behavior
+- Designing complex **Pydantic schemas** for structured reports
+- Saving JSON artifacts in callbacks for downstream processing
+- When extended thinking adds value vs. standard generation
 
-```json
-{
-  "image_type": "concept_diagram",
-  "style": {
-    "design": "security-focused architecture diagram",
-    "color_scheme": "Google Cloud colors (blue #4285F4, green #34A853) with security emphasis",
-    "layout": "nested containers showing isolation",
-    "aesthetic": "clean, professional, enterprise security style"
-  },
-  "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1000},
-  "title": {"text": "BuiltInCodeExecutor: Safe Code Execution", "position": "top center"},
-  "concept": "Illustrate that code runs INSIDE Gemini's infrastructure, not on user's server",
-  "sections": [
-    {
-      "id": "outer",
-      "label": "Gemini Cloud Infrastructure",
-      "position": "full",
-      "color": "#E3F2FD",
-      "border": "dashed #4285F4"
-    },
-    {
-      "id": "sandbox",
-      "label": "Sandboxed Environment",
-      "position": "center within outer",
-      "color": "#E8F5E9",
-      "border": "solid #34A853",
-      "icon": "shield/lock",
-      "components": [
-        {"name": "Python Runtime", "icon": "python logo"},
-        {"name": "pandas, numpy", "icon": "packages"},
-        {"name": "Isolated Execution", "icon": "container"},
-        {"name": "No Network Access", "icon": "no-wifi"},
-        {"name": "No File System", "icon": "no-folder"}
-      ]
-    },
-    {
-      "id": "user_app",
-      "label": "Your Application",
-      "position": "left outside",
-      "color": "#FFF3E0",
-      "components": [
-        {"name": "ADK Agent", "description": "Sends code to Gemini"},
-        {"name": "Receives Results", "description": "Output text only"}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "user_app", "to": "sandbox", "label": "Code string →", "style": "arrow right"},
-    {"from": "sandbox", "to": "user_app", "label": "← Output text", "style": "arrow left"}
-  ],
-  "annotations": [
-    {"text": "No server-side execution needed", "position": "bottom left"},
-    {"text": "Safe: Cannot access your systems", "position": "bottom right"}
-  ]
-}
-```
+---
 
-</details>
+**[← Back to Part 4: Competitor Mapping](./04-competitor-mapping.md)** | **[Continue to Part 6: Strategy Synthesis →](./06-strategy-synthesis.md)**

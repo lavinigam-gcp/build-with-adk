@@ -1,41 +1,37 @@
 # Part 2: Request Parsing with IntakeAgent
 
-By the end of this part, your agent will extract structured data from natural language requests.
+In the previous part, you got a working agent running on `adk web`. But when you typed "I want to open a coffee shop in Bangalore," how did the pipeline know to extract "coffee shop" as the business type and "Bangalore" as the location?
 
-**Input**: "I want to open a coffee shop in Indiranagar, Bangalore"
-**Output**:
-```json
-{
-  "target_location": "Indiranagar, Bangalore",
-  "business_type": "coffee shop"
-}
-```
+That's the job of the **IntakeAgent**—and by the end of this part, you'll understand exactly how it transforms messy natural language into clean, structured data.
+
+<p align="center">
+  <img src="assets/part2_data_flow_diagram.jpeg" alt="Part 2: IntakeAgent Data Flow - From Natural Language to Structured Output" width="600">
+</p>
 
 ---
 
-## The Challenge: Understanding User Intent
+## The Challenge: Bridging Natural Language and Structured Data
 
-Users speak in natural language. They might say:
+Users don't speak in JSON. They say things like:
 
-- "I want to open a coffee shop in Indiranagar, Bangalore"
-- "Analyze the market for a new gym in downtown Seattle"
-- "Help me find the best location for a bakery in Mumbai"
-- "Where should I open my restaurant in San Francisco's Mission District?"
+- *"I want to open a coffee shop in Indiranagar, Bangalore"*
+- *"Analyze the market for a new gym in downtown Seattle"*
+- *"Help me find the best location for a bakery in Mumbai"*
+- *"Where should I open my restaurant in San Francisco's Mission District?"*
 
-Our pipeline needs structured data:
-- `target_location`: Where to analyze
-- `business_type`: What kind of business
+Each of these sentences contains the same two pieces of information—a location and a business type—but expressed in completely different ways. The location might come before or after the business type. It might be a neighborhood, a city, or a region. The business type might be explicit ("coffee shop") or implied ("restaurant").
 
-The **IntakeAgent** bridges this gap using Pydantic schemas for structured output.
+Our downstream agents need structured data they can rely on. The MarketResearchAgent needs to know exactly what location to search for. The CompetitorMappingAgent needs the business type to query Google Maps. Without consistent, structured inputs, the entire pipeline falls apart.
+
+The IntakeAgent solves this problem by combining two powerful techniques: **Pydantic schemas** for type-safe output and **few-shot prompting** for reliable extraction.
 
 ---
 
-## The Pydantic Schema
+## Defining the Output Schema
 
-First, we define what structured output we want. Open `app/sub_agents/intake_agent/agent.py`:
+The first step is to define exactly what structure we want. In `app/sub_agents/intake_agent/agent.py`, we create a Pydantic model:
 
 ```python
-# app/sub_agents/intake_agent/agent.py
 from typing import Optional
 from pydantic import BaseModel, Field
 
@@ -54,22 +50,24 @@ class UserRequest(BaseModel):
     )
 ```
 
-**Why Pydantic?**
+This schema does more than just define field names. The `Field(description=...)` annotations are crucial—they tell Gemini what each field means and what kind of values to put there. When ADK sends this schema to the model, Gemini understands that `target_location` should be a geographic area like "Indiranagar, Bangalore" rather than something abstract like "a busy area."
+
+Using Pydantic gives us several benefits:
 
 | Benefit | How It Helps |
 |---------|--------------|
-| Type safety | Gemini knows what types to output |
-| Field descriptions | LLM understands what each field means |
-| Validation | Automatic validation of output structure |
-| IDE support | Autocomplete and type hints |
+| **Type safety** | Gemini knows to output strings, not numbers or objects |
+| **Field descriptions** | The LLM understands the semantic meaning of each field |
+| **Automatic validation** | ADK validates the response matches the schema |
+| **IDE support** | You get autocomplete and type hints when accessing the data |
 
-The `Field(description=...)` is critical - it tells the model what to put in each field.
+> **Learn more:** The [ADK Structured Output documentation](https://google.github.io/adk-docs/agents/llm-agents/#structured-output) explains how schemas work with different model providers.
 
 ---
 
-## The Agent Instruction
+## Few-Shot Prompting for Reliable Extraction
 
-The instruction uses few-shot examples to guide parsing:
+A schema tells Gemini *what* to output, but few-shot examples show it *how*. The IntakeAgent's instruction includes multiple examples that demonstrate the expected behavior:
 
 ```python
 INTAKE_INSTRUCTION = """You are a request parser for a retail location intelligence system.
@@ -103,19 +101,22 @@ If the user doesn't specify a clear location or business type, make a reasonable
 """
 ```
 
-**Few-shot prompting** makes parsing more reliable:
-- Shows the model expected input/output patterns
-- Covers edge cases (different phrasings, locations)
-- Establishes consistent output format
+These examples aren't just documentation—they're training data. Each example shows a different phrasing pattern, teaching the model to handle variations:
+
+- Business type before location: *"coffee shop in Bangalore"*
+- Location before business type: *"downtown Seattle for a gym"*
+- Neighborhood-level specificity: *"Mission District, San Francisco"*
+- City-level generality: *"Mumbai"*
+
+Few-shot prompting is remarkably effective for parsing tasks. The model learns the pattern from examples and generalizes to new inputs, even ones with phrasings it hasn't seen before.
 
 ---
 
 ## Building the IntakeAgent
 
-Here's the complete agent definition:
+With the schema and instruction defined, building the agent is straightforward:
 
 ```python
-# app/sub_agents/intake_agent/agent.py
 from google.adk.agents import LlmAgent
 from google.genai import types
 
@@ -140,34 +141,30 @@ intake_agent = LlmAgent(
 )
 ```
 
-**Key Parameters**:
+Let's examine the key parameters:
 
-| Parameter | Purpose |
-|-----------|---------|
-| `output_schema=UserRequest` | Forces Gemini to output valid `UserRequest` JSON |
-| `output_key="parsed_request"` | Saves output to `state["parsed_request"]` |
-| `after_agent_callback` | Post-processing hook |
-| `generate_content_config` | Retry configuration for API errors |
+| Parameter | What It Does |
+|-----------|--------------|
+| `output_schema=UserRequest` | Forces Gemini to return valid JSON matching the Pydantic schema |
+| `output_key="parsed_request"` | Saves the parsed output to `state["parsed_request"]` |
+| `after_agent_callback=after_intake` | Runs a function after parsing completes |
+| `generate_content_config` | Configures retries for transient API errors |
 
-### How `output_schema` Works
+The magic happens with `output_schema`. When you set this parameter, ADK instructs Gemini to output structured JSON rather than free-form text. The model's response is automatically validated against your Pydantic model, and if it doesn't match, ADK handles the error gracefully.
 
-When you set `output_schema=UserRequest`:
+**Important caveat:** Setting `output_schema` disables tool calling for that agent. If you need an agent that both uses tools and produces structured output, you'll need to split it into two agents or use a callback to structure the output.
 
-1. ADK tells Gemini to output JSON matching the schema
-2. Gemini returns structured JSON (not free text)
-3. ADK validates the response against the Pydantic model
-4. The validated object is saved to state using `output_key`
-
-No manual JSON parsing needed!
+> **Learn more:** The [LlmAgent documentation](https://google.github.io/adk-docs/agents/llm-agents/) covers all available parameters.
 
 ---
 
-## The After Callback
+## Post-Processing with Callbacks
 
-After parsing, we extract values to individual state keys for other agents:
+After the IntakeAgent parses the request, we need to make the extracted values available to other agents. ADK uses **state injection**—the ability to reference state values in agent instructions using `{variable}` syntax. For this to work, we need individual state keys.
+
+The `after_intake` callback handles this extraction:
 
 ```python
-# app/sub_agents/intake_agent/agent.py
 from google.adk.agents.callback_context import CallbackContext
 
 def after_intake(callback_context: CallbackContext) -> Optional[types.Content]:
@@ -175,17 +172,17 @@ def after_intake(callback_context: CallbackContext) -> Optional[types.Content]:
     parsed = callback_context.state.get("parsed_request", {})
 
     if isinstance(parsed, dict):
-        # Extract values from parsed request
+        # Handle dictionary output
         callback_context.state["target_location"] = parsed.get("target_location", "")
         callback_context.state["business_type"] = parsed.get("business_type", "")
         callback_context.state["additional_context"] = parsed.get("additional_context", "")
     elif hasattr(parsed, "target_location"):
-        # Handle Pydantic model
+        # Handle Pydantic model output
         callback_context.state["target_location"] = parsed.target_location
         callback_context.state["business_type"] = parsed.business_type
         callback_context.state["additional_context"] = parsed.additional_context or ""
 
-    # Track intake stage completion
+    # Track stage completion for pipeline monitoring
     stages = callback_context.state.get("stages_completed", [])
     stages.append("intake")
     callback_context.state["stages_completed"] = stages
@@ -193,20 +190,17 @@ def after_intake(callback_context: CallbackContext) -> Optional[types.Content]:
     return None  # Allow normal flow to continue
 ```
 
-**Why extract to individual keys?**
+The callback checks whether the parsed output is a dictionary or a Pydantic model (ADK may return either depending on the situation) and extracts the values to individual keys. It also tracks which stages have completed, useful for debugging and UI updates.
 
-Other agents reference state variables like this:
-```python
-instruction="Research {target_location} for {business_type}..."
-```
+Returning `None` tells ADK to continue with normal processing. If you returned a `types.Content` object instead, that would replace the agent's output—useful for overriding responses in certain conditions.
 
-ADK injects values from state using `{variable}` syntax. Having individual keys makes this clean.
+> **Learn more:** The [Callbacks documentation](https://google.github.io/adk-docs/callbacks/) explains the full callback lifecycle.
 
 ---
 
-## Wiring IntakeAgent to Root Agent
+## Wiring IntakeAgent to the Root Agent
 
-In `app/agent.py`, the IntakeAgent is used as a tool:
+The IntakeAgent is connected to the root agent as a **tool** rather than a sub-agent. This distinction matters:
 
 ```python
 # app/agent.py
@@ -223,27 +217,34 @@ root_agent = Agent(
 4. Once you have the details, call the IntakeAgent tool to process them.
 5. After IntakeAgent succeeds, delegate to the LocationStrategyPipeline.
 Your main function is to manage this workflow conversationally.""",
-    tools=[AgentTool(intake_agent)],  # IntakeAgent as a tool
+    tools=[AgentTool(intake_agent)],  # IntakeAgent wrapped as a tool
     sub_agents=[location_strategy_pipeline],
 )
 ```
 
-**`AgentTool`** wraps an agent so it can be called like a function tool. The root agent can:
-1. Talk to the user
-2. Call IntakeAgent when needed
+When you wrap an agent with `AgentTool`, the root agent can call it like a function. The root agent sends a message, the IntakeAgent processes it and returns structured data, and then the root agent continues with the conversation. This is different from adding an agent to `sub_agents`, which would hand off complete control.
+
+Using IntakeAgent as a tool makes sense because we want the root agent to:
+1. Have a conversation with the user
+2. Call IntakeAgent to parse the request
 3. Access the parsed results from state
+4. Decide what to do next
+
+The root agent stays in control throughout, using IntakeAgent as a utility for structured extraction.
+
+> **Learn more:** The [AgentTool documentation](https://google.github.io/adk-docs/tools/agent-tool/) explains when to use tools vs sub-agents.
 
 ---
 
-## Try It!
+## Testing the IntakeAgent
 
-Run the agent:
+Let's see it in action. Start the development server:
 
 ```bash
 make dev
 ```
 
-Open `http://localhost:8501` and try different queries:
+Open `http://localhost:8501` and try different query phrasings:
 
 | Query | Expected Extraction |
 |-------|---------------------|
@@ -252,71 +253,43 @@ Open `http://localhost:8501` and try different queries:
 | "Bakery in Mumbai" | location: "Mumbai", business: "bakery" |
 | "Restaurant in Mission District, SF" | location: "Mission District, San Francisco", business: "restaurant" |
 
-Watch the state panel - you'll see:
-- `parsed_request`: The full structured output
-- `target_location`: Extracted location
-- `business_type`: Extracted business type
+In the ADK web interface, watch the **State** panel on the right side. After the IntakeAgent runs, you'll see:
 
----
+- `parsed_request` — The full structured output from the agent
+- `target_location` — The extracted location string
+- `business_type` — The extracted business type
+- `stages_completed` — An array showing "intake" has completed
 
-## Understanding the Flow
-
-```
-User: "Coffee shop in Indiranagar, Bangalore"
-         │
-         ▼
-    ┌─────────────┐
-    │ Root Agent  │ ── instruction says: "call IntakeAgent tool"
-    └─────────────┘
-         │
-         ▼ calls AgentTool(intake_agent)
-    ┌─────────────┐
-    │IntakeAgent  │
-    │             │ ← output_schema=UserRequest
-    │             │ ← output_key="parsed_request"
-    └─────────────┘
-         │
-         ▼ after_intake callback
-    ┌─────────────┐
-    │   State     │
-    │             │ target_location: "Indiranagar, Bangalore"
-    │             │ business_type: "coffee shop"
-    └─────────────┘
-```
+These state values are now available for every subsequent agent in the pipeline.
 
 ---
 
 ## Handling Edge Cases
 
-The instruction handles ambiguous inputs:
+Real users don't always provide complete information. Someone might say "I want to open a shop" without specifying where, or "Analyze Mumbai" without mentioning what business. The instruction handles this gracefully:
 
-> "If the user doesn't specify a clear location or business type, make a reasonable inference or ask for clarification."
+> *"If the user doesn't specify a clear location or business type, make a reasonable inference or ask for clarification."*
 
-Examples:
-- "I want to open a shop" → Agent infers or asks for location
-- "Analyze Mumbai" → Agent infers business type or asks
+The model can:
+- **Infer from context:** If someone asks about "a shop in the Haight," the model understands "Haight" likely means "Haight-Ashbury, San Francisco"
+- **Request clarification:** If critical information is missing, the model can ask follow-up questions before producing structured output
 
-The few-shot examples help the model handle variations gracefully.
+The few-shot examples establish patterns the model can generalize from, making it robust to variations it hasn't explicitly seen.
 
 ---
 
 ## What You've Learned
 
-In this part, you:
+In this part, you've explored how the IntakeAgent transforms natural language into structured data:
 
-1. Created a Pydantic schema for structured output
-2. Wrote a few-shot instruction for reliable parsing
-3. Built IntakeAgent with `output_schema` and `output_key`
-4. Added a callback to extract parsed values to state
-5. Connected IntakeAgent to the root agent via AgentTool
+- **Pydantic schemas** define the shape of structured output, with field descriptions guiding the model
+- **Few-shot prompting** teaches extraction patterns through examples, making parsing robust to variations
+- **`output_schema` parameter** forces the model to return validated JSON matching your schema
+- **`output_key` parameter** automatically saves the output to session state
+- **Callbacks** enable post-processing, extracting individual values for downstream agents
+- **`AgentTool`** wraps an agent so it can be called as a function from another agent
 
----
-
-## Next Up
-
-We can now parse user requests reliably. But "coffee shop in Indiranagar, Bangalore" is just a starting point—we know *what* the user wants, but not *whether* it's a good idea. Is Indiranagar oversaturated with coffee shops? What are the demographics? What's the rental market like?
-
-In [Part 3: Market Research](./03-market-research.md), we'll add the **MarketResearchAgent** that uses ADK's built-in `google_search` tool to answer these questions with live data. The agent will search for demographics, trends, foot traffic patterns, and rental rates—pulling current information that no training dataset contains.
+This pattern—structured output with few-shot examples—is foundational for any agent that needs to extract information from unstructured input. You'll use variations of it throughout your ADK projects.
 
 ---
 
@@ -326,68 +299,34 @@ In [Part 3: Market Research](./03-market-research.md), we'll add the **MarketRes
 |---------|-------------|
 | Structured output | `output_schema=PydanticModel` |
 | Save to state | `output_key="key_name"` |
-| Post-processing | `after_agent_callback` |
-| Agent as tool | `AgentTool(agent)` |
-| State access in callback | `callback_context.state["key"]` |
+| Post-processing | `after_agent_callback=function` |
+| Agent as callable tool | `AgentTool(agent)` |
+| State access in callbacks | `callback_context.state["key"]` |
+| State injection in prompts | `{variable_name}` syntax in instructions |
 
----
-
-**Code files referenced in this part:**
-- [`app/sub_agents/intake_agent/agent.py`](../app/sub_agents/intake_agent/agent.py) - IntakeAgent definition
-- [`app/agent.py`](../app/agent.py) - Root agent with AgentTool
+**Files referenced in this part:**
+- [`app/sub_agents/intake_agent/agent.py`](../app/sub_agents/intake_agent/agent.py) — IntakeAgent definition and schema
+- [`app/agent.py`](../app/agent.py) — Root agent with AgentTool integration
 
 **ADK Documentation:**
-- [Structured Output](https://google.github.io/adk-docs/agents/llm-agents/#structured-output)
-- [Agent Callbacks](https://google.github.io/adk-docs/agents/callbacks/)
-- [AgentTool](https://google.github.io/adk-docs/tools/agent-tool/)
+- [Structured Output](https://google.github.io/adk-docs/agents/llm-agents/#structured-output) — Using Pydantic with LlmAgent
+- [Agent Callbacks](https://google.github.io/adk-docs/callbacks/) — Lifecycle hooks for agents
+- [AgentTool](https://google.github.io/adk-docs/tools/agent-tool/) — Wrapping agents as callable tools
+- [Session State](https://google.github.io/adk-docs/sessions/state/) — How state flows between agents
 
 ---
 
-<details>
-<summary>Image Prompt for This Part</summary>
+## Next: Market Research with Google Search
 
-```json
-{
-  "image_type": "data_flow_diagram",
-  "style": {
-    "design": "clean, modern technical diagram",
-    "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
-    "layout": "horizontal flow",
-    "aesthetic": "minimalist, vector-style"
-  },
-  "dimensions": {"aspect_ratio": "3:1", "recommended_width": 1000},
-  "title": {"text": "Part 2: IntakeAgent - Request Parsing", "position": "top center"},
-  "sections": [
-    {
-      "id": "input",
-      "position": "left",
-      "color": "#4285F4",
-      "components": [
-        {"name": "User Query", "icon": "speech bubble", "example": "I want to open a coffee shop in Indiranagar, Bangalore"}
-      ]
-    },
-    {
-      "id": "agent",
-      "position": "center",
-      "color": "#34A853",
-      "components": [
-        {"name": "IntakeAgent", "icon": "robot with clipboard", "features": ["Pydantic Schema", "Few-shot Examples"]}
-      ]
-    },
-    {
-      "id": "output",
-      "position": "right",
-      "color": "#FBBC05",
-      "components": [
-        {"name": "Structured Data", "icon": "JSON/code block", "fields": ["target_location", "business_type"]}
-      ]
-    }
-  ],
-  "connections": [
-    {"from": "input", "to": "agent", "label": "Parse"},
-    {"from": "agent", "to": "output", "label": "Extract"}
-  ]
-}
-```
+We can now reliably parse user requests into structured data. But knowing that someone wants a "coffee shop in Indiranagar, Bangalore" is just the starting point. Is Indiranagar a good location? What are the demographics? Is the market saturated? What's the rental landscape like?
 
-</details>
+In **[Part 3: Market Research](./03-market-research.md)**, we'll build the MarketResearchAgent that uses ADK's built-in `google_search` tool to gather live market intelligence. The agent will search for demographics, local trends, foot traffic patterns, and rental rates—pulling current information that no static training dataset could provide.
+
+You'll learn:
+- How to use ADK's built-in `google_search` tool
+- How state injection passes data between agents
+- How to write prompts that guide effective web searches
+
+---
+
+**[← Back to Part 1: Setup](./01-setup-first-agent.md)** | **[Continue to Part 3: Market Research →](./03-market-research.md)**

@@ -1,12 +1,16 @@
 # Part 8: Testing Your Agent
 
-By the end of this part, you'll have a testing strategy for validating your agent.
+You've built a complete multi-agent pipeline that transforms natural language into strategic reports, infographics, and audio briefings. It works on your laptop. But how do you know it will keep working after you change a prompt, upgrade a model, or refactor a tool?
 
-**Goal**: Ensure your agent works correctly with unit tests, integration tests, and evaluations.
+Testing LLM-based agents is fundamentally different from testing traditional software. The same input can produce different valid outputs. External APIs return different data over time. "Correct" is often subjective. This part establishes a testing strategy that handles this uncertainty—unit tests for fast feedback, integration tests for real agent behavior, and evaluations for measuring quality over time.
+
+<p align="center">
+  <img src="assets/part8_testing_pyramid.jpeg" alt="Part 8: Testing Pyramid for AI Agents" width="600">
+</p>
 
 ---
 
-## Why Test AI Agents?
+## The Challenge: Non-Deterministic Outputs
 
 Testing traditional software is straightforward: given input X, expect output Y. But LLM-based agents break this model fundamentally.
 
@@ -14,7 +18,7 @@ Consider this scenario: You ask the IntakeAgent to parse "I want to open a coffe
 
 This non-determinism cascades through the pipeline. The MarketResearchAgent searches the web—but web results change daily. The CompetitorMappingAgent calls Google Maps—but businesses open and close. The GapAnalysisAgent writes Python code—but the specific code varies run to run.
 
-**The unique challenges of testing AI agents:**
+The unique challenges of testing AI agents:
 
 | Challenge | Why It Matters |
 |-----------|----------------|
@@ -27,34 +31,29 @@ Testing AI agents isn't about asserting exact matches—it's about validating th
 
 ---
 
-## The Testing Pyramid
+## The Testing Pyramid for AI Agents
 
-```
-                    ┌─────────────┐
-                    │   Evals     │  ← Slow, comprehensive
-                    │  (quality)  │     Run before releases
-                    ├─────────────┤
-                    │ Integration │  ← Medium speed
-                    │   Tests     │     Run on PRs
-                    ├─────────────┤
-                    │    Unit     │  ← Fast, focused
-                    │   Tests     │     Run on every commit
-                    └─────────────┘
-```
+The traditional testing pyramid applies to AI agents, but with different characteristics at each level:
 
 | Level | Speed | API Calls | Purpose |
 |-------|-------|-----------|---------|
-| Unit | ~2 seconds | 0 | Validate schemas, utilities |
-| Integration | ~2-5 minutes | Yes | Test individual agents |
-| Evaluations | ~30-60 minutes | Yes | Measure response quality |
+| **Unit Tests** | ~2 seconds | None | Validate schemas, utilities, configurations |
+| **Integration Tests** | ~2-5 minutes | Yes | Test individual agents with real API calls |
+| **Evaluations** | ~30-60 minutes | Yes | Measure response quality over time |
+
+Each level answers a different question. Unit tests ask "Is the code structurally correct?" Integration tests ask "Does the agent work?" Evaluations ask "How well does it work?"
+
+> **Learn more:** The [ADK Evaluation documentation](https://google.github.io/adk-docs/evaluate/) covers the full testing and evaluation framework.
 
 ---
 
-## Unit Tests
+## Unit Tests: Fast, No API Calls
 
-Fast tests that don't require API keys. Great for schemas and data transformations.
+Unit tests validate the deterministic parts of your agent: Pydantic schemas, utility functions, configuration parsing. They run in seconds and don't require API keys.
 
 ### Example: Schema Validation
+
+The `LocationIntelligenceReport` schema has validation constraints like `ge=0, le=100` for scores. Unit tests verify these constraints work:
 
 ```python
 # tests/unit/test_schemas.py
@@ -63,7 +62,11 @@ from app.schemas.report_schema import (
     LocationIntelligenceReport,
     LocationRecommendation,
     StrengthAnalysis,
+    ConcernAnalysis,
+    CompetitionProfile,
+    MarketCharacteristics,
 )
+
 
 class TestLocationIntelligenceReport:
     """Test Pydantic schema validation."""
@@ -77,36 +80,57 @@ class TestLocationIntelligenceReport:
             market_validation="Strong market",
             total_competitors_found=15,
             zones_analyzed=4,
-            top_recommendation=LocationRecommendation(...),
+            top_recommendation=self._create_sample_recommendation(),
             alternative_locations=[],
             key_insights=["Insight 1"],
             methodology_summary="Summary",
         )
         assert report.target_location == "Bangalore, India"
+        assert report.zones_analyzed == 4
 
-    def test_invalid_score(self):
-        """Test that score must be 0-100."""
+    def test_invalid_score_too_high(self):
+        """Test that score must be <= 100."""
         with pytest.raises(ValueError):
-            LocationRecommendation(
-                overall_score=150,  # Invalid!
-                # ...
-            )
+            self._create_sample_recommendation(overall_score=150)
+
+    def test_invalid_score_negative(self):
+        """Test that score must be >= 0."""
+        with pytest.raises(ValueError):
+            self._create_sample_recommendation(overall_score=-10)
+
+    def _create_sample_recommendation(self, overall_score=78):
+        return LocationRecommendation(
+            location_name="Defence Colony",
+            area="Indiranagar",
+            overall_score=overall_score,
+            opportunity_type="Residential Premium",
+            strengths=[],
+            concerns=[],
+            competition=CompetitionProfile(...),
+            market=MarketCharacteristics(...),
+            best_customer_segment="Young professionals",
+            estimated_foot_traffic="Moderate",
+            next_steps=["Scout properties"],
+        )
 ```
 
-**Run unit tests:**
+Run unit tests with:
+
 ```bash
-make test-unit
+make test-unit  # ~2 seconds, no API calls
 ```
+
+Unit tests catch schema changes that would break downstream processing. If you add a required field to `LocationIntelligenceReport`, unit tests fail immediately—before you waste time on slow integration tests.
 
 ---
 
-## Integration Tests
+## Integration Tests: Real Agent Behavior
 
-Test real agent behavior with actual API calls.
+Integration tests run actual agents with real API calls. They're slower but validate that agents behave correctly end-to-end.
 
 ### The `run_agent_test` Helper
 
-The project includes a helper for running agents in isolation:
+The project includes a helper function that runs agents in isolation and returns both the response and final state:
 
 ```python
 # tests/conftest.py
@@ -168,12 +192,15 @@ async def run_agent_test(
     }
 ```
 
+This helper uses `InMemorySessionService` for test isolation—each test gets a fresh session without persisting to any database.
+
 ### Testing IntakeAgent
 
 ```python
 # tests/integration/test_agents.py
 import pytest
 from tests.conftest import run_agent_test
+
 
 @pytest.mark.integration
 class TestIntakeAgent:
@@ -194,7 +221,7 @@ class TestIntakeAgent:
         state = result["state"]
         assert "parsed_request" in state or "target_location" in state
 
-        # Check location extracted
+        # Check location extracted (flexible matching)
         target = state.get("target_location", "")
         assert "bangalore" in target.lower() or "indiranagar" in target.lower()
 
@@ -218,20 +245,20 @@ class TestIntakeAgent:
         assert "gym" in state.get("business_type", "").lower()
 ```
 
-**Run integration tests:**
-```bash
-# Quick test - just IntakeAgent
-make test-intake
+Notice the flexible assertions. We don't assert `target_location == "Indiranagar, Bangalore"` exactly. Instead, we check that it contains "bangalore" or "indiranagar". This accommodates the natural variation in LLM outputs while still validating correctness.
 
-# All agents
-make test-agents
+Run integration tests with:
+
+```bash
+make test-intake    # Just IntakeAgent (~30 seconds)
+make test-agents    # All agents (~2-5 minutes)
 ```
 
 ---
 
 ## Testing Agents That Depend on State
 
-Some agents need prior state. Pre-populate it in tests:
+Some agents need prior state to function. The MarketResearchAgent expects `target_location` and `business_type` to already exist in state. Pre-populate this in tests:
 
 ```python
 @pytest.mark.asyncio
@@ -254,13 +281,21 @@ async def test_market_research(self):
     assert len(state["market_research_findings"]) > 100
 ```
 
+The `session_state` parameter lets you inject the state that would normally come from upstream agents. This enables testing agents in isolation without running the full pipeline.
+
 ---
 
-## ADK Evaluations
+## ADK Evaluations: Measuring Quality
 
-Evaluations measure response quality, not just correctness.
+Integration tests answer "Does it work?" Evaluations answer "How well does it work?" They measure semantic similarity between actual outputs and expected outputs, giving you a quality score rather than a binary pass/fail.
+
+<p align="center">
+  <img src="assets/part8_concept_comparison.jpeg" alt="Tests vs Evaluations: Different Questions" width="600">
+</p>
 
 ### EvalSet Format
+
+Evaluations use JSON files that define test cases with expected outputs:
 
 ```json
 {
@@ -293,6 +328,8 @@ Evaluations measure response quality, not just correctness.
 }
 ```
 
+The `final_response` is the expected output. ADK's evaluation framework compares actual agent responses to this expected output using semantic similarity.
+
 ### Running Evaluations
 
 ```bash
@@ -307,26 +344,28 @@ uv run adk eval app tests/evalsets/intake.evalset.json
 
 | Metric | Description | Target |
 |--------|-------------|--------|
-| `response_match_score` | Semantic similarity (0-1) | > 0.6 |
-| `tool_trajectory_avg_score` | Tool usage accuracy | > 0.8 |
+| `response_match_score` | Semantic similarity to expected output (0-1) | > 0.6 |
+| `tool_trajectory_avg_score` | How well tool usage matches expected pattern | > 0.8 |
+
+A `response_match_score` of 0.6 means the response is semantically similar to the expected output, even if the exact words differ. This is perfect for LLM outputs where "coffee shop in Bangalore, Karnataka" and "Bangalore coffee shop" mean the same thing.
 
 ---
 
-## Tests vs Evaluations
+## Tests vs Evaluations: When to Use What
 
 | Aspect | Tests | Evaluations |
 |--------|-------|-------------|
 | **Question** | "Does it work?" | "How well does it work?" |
 | **Output** | Pass/Fail | Score (0.0-1.0) |
-| **Speed** | Fast | Slow |
+| **Speed** | Fast (2-5 min) | Slow (30-60 min) |
 | **When to run** | Every commit | Pre-release |
 
-### When to Use What
+Use this decision matrix:
 
-| Scenario | Use |
-|----------|-----|
-| Changed Pydantic schema | `make test-unit` |
-| Modified agent prompt | `make test-agents` + `make eval` |
+| Scenario | What to Run |
+|----------|-------------|
+| Changed a Pydantic schema | `make test-unit` |
+| Modified an agent prompt | `make test-agents` + `make eval` |
 | Upgrading model version | `make eval` (compare before/after) |
 | Fixed a bug in a tool | `make test-agents` |
 | Preparing a release | Full suite + evals |
@@ -335,7 +374,7 @@ uv run adk eval app tests/evalsets/intake.evalset.json
 
 ## CI/CD Pipeline
 
-A production-grade pipeline:
+A production-grade pipeline runs different test levels at different stages:
 
 ```yaml
 # On every commit
@@ -347,8 +386,10 @@ A production-grade pipeline:
 # Before release
 - make eval             # ~30-60 minutes
 - Compare scores to baseline
-- Block release if scores drop
+- Block release if scores drop significantly
 ```
+
+This balances fast feedback (unit tests on every commit) with thorough validation (evals before release).
 
 ---
 
@@ -356,21 +397,30 @@ A production-grade pipeline:
 
 ### 1. Test Agents in Isolation
 
-Test each sub-agent before the full pipeline:
+Test each sub-agent before running the full pipeline. This makes failures easier to diagnose:
+
 ```
 IntakeAgent → MarketResearchAgent → CompetitorMappingAgent → ...
 ```
 
+If the full pipeline fails, you don't know which agent broke. If you test each agent in isolation, you know exactly where the problem is.
+
 ### 2. Use Appropriate Timeouts
 
-| Agent | Timeout |
-|-------|---------|
+Different agents take different amounts of time:
+
+| Agent | Recommended Timeout |
+|-------|---------------------|
 | IntakeAgent | 60s |
 | MarketResearchAgent | 120s |
 | GapAnalysisAgent | 180s |
 | Full pipeline | 600s |
 
+Set timeouts with `@pytest.mark.timeout(60)` to prevent hung tests.
+
 ### 3. Validate State, Not Just Response
+
+The response text is often less important than the state changes:
 
 ```python
 # Check state structure
@@ -382,7 +432,7 @@ assert len(state.get("market_research_findings", "")) > 50
 assert result["response"] is not None
 ```
 
-### 4. Use Fixtures
+### 4. Use Fixtures for Common State
 
 ```python
 # conftest.py
@@ -401,6 +451,8 @@ async def test_market_research(self, sample_intake_state):
         session_state=sample_intake_state,
     )
 ```
+
+Fixtures reduce duplication and make tests easier to maintain.
 
 ---
 
@@ -428,128 +480,55 @@ make eval-intake
 
 ## What You've Learned
 
-In this part, you:
+In this part, you've established a testing strategy for AI agents:
 
-1. Understood the testing pyramid for AI agents
-2. Created unit tests for Pydantic schemas
-3. Built integration tests using `run_agent_test`
-4. Learned about ADK evaluations and metrics
-5. Established CI/CD best practices
+- **Unit tests** validate schemas and utilities without API calls
+- **Integration tests** run real agents with the `run_agent_test` helper
+- **Flexible assertions** accommodate non-deterministic LLM outputs
+- **State pre-population** enables testing agents in isolation
+- **ADK evaluations** measure response quality with semantic similarity
+- **CI/CD pipelines** balance fast feedback with thorough validation
 
----
-
-## Next Up
-
-Your agent is tested and validated. It works on your laptop at `localhost:8501`. But your stakeholders aren't going to SSH into your machine to use it. They need a URL.
-
-In [Part 9: Production Deployment](./09-production-deployment.md), we'll take this agent from local development to production. You'll deploy to Cloud Run with IAP authentication, or to Vertex AI Agent Engine for a fully managed experience. Either way, you'll end with a secure, scalable URL that your team can actually use.
+Testing AI agents requires accepting that "correct" isn't a binary—it's a spectrum. The goal is to catch regressions while allowing for the natural variation inherent in LLM outputs.
 
 ---
 
-**Code files referenced in this part:**
-- [`tests/README.md`](../tests/README.md) - Comprehensive testing guide
-- [`tests/conftest.py`](../tests/conftest.py) - Shared fixtures
-- [`tests/unit/test_schemas.py`](../tests/unit/test_schemas.py) - Unit tests
-- [`tests/integration/test_agents.py`](../tests/integration/test_agents.py) - Integration tests
-- [`tests/evalsets/`](../tests/evalsets/) - Evaluation datasets
+## Quick Reference
+
+| Test Type | Command | When to Run | API Calls |
+|-----------|---------|-------------|-----------|
+| Unit | `make test-unit` | Every commit | No |
+| Integration | `make test-agents` | Pull requests | Yes |
+| Evaluation | `make eval` | Pre-release | Yes |
+
+**Files referenced in this part:**
+
+- [`tests/README.md`](../tests/README.md) — Comprehensive testing guide
+- [`tests/conftest.py`](../tests/conftest.py) — Shared fixtures and helpers
+- [`tests/unit/test_schemas.py`](../tests/unit/test_schemas.py) — Unit tests
+- [`tests/integration/test_agents.py`](../tests/integration/test_agents.py) — Integration tests
+- [`tests/evalsets/`](../tests/evalsets/) — Evaluation datasets
 
 **ADK Documentation:**
-- [Testing](https://google.github.io/adk-docs/evaluate/)
-- [Evaluations](https://google.github.io/adk-docs/evaluate/)
+
+- [Testing & Evaluation](https://google.github.io/adk-docs/evaluate/) — ADK's evaluation framework
+- [Runners](https://google.github.io/adk-docs/runtime/runners/) — Running agents programmatically
+- [Sessions](https://google.github.io/adk-docs/sessions/) — Session management for testing
 
 ---
 
-<details>
-<summary>Image Prompts for This Part</summary>
+## Next: Production Deployment
 
-### Image 1: Testing Pyramid
+Your agent is tested and validated. It works on your laptop at `localhost:8501`. But your stakeholders aren't going to SSH into your machine to use it. They need a URL they can bookmark and share.
 
-```json
-{
-  "image_type": "testing_pyramid",
-  "style": {
-    "design": "clean, technical documentation style",
-    "color_scheme": "Google Cloud colors (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853) with white background",
-    "layout": "pyramid with annotations",
-    "aesthetic": "minimalist"
-  },
-  "dimensions": {"aspect_ratio": "4:3", "recommended_width": 800},
-  "title": {"text": "Part 8: Testing Your Agent", "position": "top center"},
-  "sections": [
-    {
-      "id": "pyramid",
-      "layout": "triangle/pyramid",
-      "layers": [
-        {"level": 1, "name": "Unit Tests", "color": "#E8F5E9", "time": "~2 seconds", "command": "make test-unit"},
-        {"level": 2, "name": "Integration Tests", "color": "#FFF3E0", "time": "~2-5 minutes", "command": "make test-agents"},
-        {"level": 3, "name": "Evaluations", "color": "#FCE4EC", "time": "Quality metrics", "command": "make eval"}
-      ]
-    },
-    {
-      "id": "axis",
-      "position": "right",
-      "annotations": [
-        {"arrow": "up", "label": "Cost & Time"},
-        {"arrow": "down", "label": "Speed & Coverage"}
-      ]
-    }
-  ]
-}
-```
+In **[Part 9: Production Deployment](./09-production-deployment.md)**, you'll take this agent from local development to production. You'll learn two deployment options: Cloud Run for containerized deployment with IAP authentication, and Vertex AI Agent Engine for a fully managed experience. Either way, you'll end with a secure, scalable URL that your team can actually use.
 
-### Image 2: Tests vs Evaluations Concept
+You'll learn:
+- **Cloud Run** deployment with Docker and IAP authentication
+- **Vertex AI Agent Engine** for fully managed hosting
+- Environment configuration for production
+- Monitoring and observability setup
 
-```json
-{
-  "image_type": "concept_comparison",
-  "style": {
-    "design": "side-by-side comparison diagram",
-    "color_scheme": "Google Cloud colors (green #34A853 for tests, blue #4285F4 for evals)",
-    "layout": "two-column comparison",
-    "aesthetic": "clean, educational"
-  },
-  "dimensions": {"aspect_ratio": "16:9", "recommended_width": 1000},
-  "title": {"text": "Tests vs Evaluations: Different Questions", "position": "top center"},
-  "concept": "Illustrate the fundamental difference between pass/fail testing and quality scoring",
-  "sections": [
-    {
-      "id": "tests",
-      "position": "left half",
-      "label": "Integration Tests",
-      "color": "#E8F5E9",
-      "icon": "checkmark in circle",
-      "question": "Does it work?",
-      "output_type": "Pass / Fail",
-      "characteristics": [
-        {"name": "Speed", "value": "Fast (2-5 min)"},
-        {"name": "Frequency", "value": "Every commit"},
-        {"name": "Validation", "value": "State contains expected keys"},
-        {"name": "Example", "value": "'target_location' in state"}
-      ],
-      "use_when": "After modifying agent code"
-    },
-    {
-      "id": "evals",
-      "position": "right half",
-      "label": "Evaluations",
-      "color": "#E3F2FD",
-      "icon": "gauge/meter",
-      "question": "How well does it work?",
-      "output_type": "Score (0.0 - 1.0)",
-      "characteristics": [
-        {"name": "Speed", "value": "Slow (30-60 min)"},
-        {"name": "Frequency", "value": "Pre-release"},
-        {"name": "Validation", "value": "Semantic similarity to ideal"},
-        {"name": "Example", "value": "response_match_score > 0.6"}
-      ],
-      "use_when": "Before deploying to production"
-    }
-  ],
-  "bottom_annotation": {
-    "text": "Tests catch regressions fast; Evals ensure quality over time",
-    "position": "bottom center"
-  }
-}
-```
+---
 
-</details>
+**[← Back to Part 7: Artifact Generation](./07-artifact-generation.md)** | **[Continue to Part 9: Production Deployment →](./09-production-deployment.md)**
