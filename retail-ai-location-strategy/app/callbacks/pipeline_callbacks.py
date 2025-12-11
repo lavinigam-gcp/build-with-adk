@@ -285,7 +285,7 @@ def _extract_python_code_from_content(content: str) -> str:
     return "\n\n# ---\n\n".join(code_blocks)
 
 
-def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.Content]:
+async def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.Content]:
     """Log completion and save JSON artifact."""
     report = callback_context.state.get("strategic_report", {})
     logger.info("STAGE 3: COMPLETE - Strategic report generated")
@@ -304,7 +304,7 @@ def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.
                 data=json_str.encode('utf-8'),
                 mime_type="application/json"
             )
-            callback_context.save_artifact("intelligence_report.json", json_artifact)
+            await callback_context.save_artifact("intelligence_report.json", json_artifact)
             logger.info("  Saved artifact: intelligence_report.json")
         except Exception as e:
             logger.warning(f"  Failed to save JSON artifact: {e}")
