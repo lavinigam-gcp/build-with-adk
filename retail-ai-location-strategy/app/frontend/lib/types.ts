@@ -145,6 +145,7 @@ export interface AgentState {
   // Artifact content (set by tools for AG-UI frontend display)
   html_report_content?: string;
   infographic_base64?: string;
+  audio_overview_base64?: string;
 
   // Metadata
   current_date?: string;

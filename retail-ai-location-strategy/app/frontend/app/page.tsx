@@ -63,7 +63,7 @@ export default function Home() {
               <span className="text-gray-700 text-sm">{currentLabel}</span>
             </div>
             <span className="text-xs text-gray-500">
-              {completedCount}/7 complete
+              {completedCount}/8 complete
             </span>
           </div>
         </div>
@@ -153,10 +153,11 @@ Tell me where you want to open your business and I'll analyze the market, map co
               </div>
 
               {/* Artifact Viewer - HTML Report and Infographic (full-screen view) */}
-              {(state.html_report_content || state.infographic_base64) && (
+              {(state.html_report_content || state.infographic_base64 || state.audio_overview_base64) && (
                 <ArtifactViewer
                   htmlReport={state.html_report_content}
                   infographic={state.infographic_base64}
+                  audioOverview={state.audio_overview_base64}
                 />
               )}
             </div>
