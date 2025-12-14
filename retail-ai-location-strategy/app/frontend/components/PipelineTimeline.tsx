@@ -156,7 +156,6 @@ export function PipelineTimeline({
       {completedCount === TIMELINE_STEPS.length && (
         <div className="p-4 bg-green-50 border-t border-green-100">
           <div className="flex items-center justify-center gap-2 text-green-700">
-            <span className="text-xl">\u2705</span>
             <span className="font-medium">Analysis Complete</span>
           </div>
         </div>
