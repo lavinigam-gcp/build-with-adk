@@ -27,6 +27,7 @@ from google.adk.tools import ToolContext
 
 from ..config import SELECTED_DIR, GENERATED_DIR
 from ..database.db import get_db_cursor
+from ..database.mock_data import generate_mock_metrics
 
 
 def generate_video_prompt(metadata: dict, campaign_info: dict = None) -> str:
@@ -286,6 +287,28 @@ async def generate_video_ad(
                 WHERE id = ?
             ''', (output_filename, ad_id))
 
+        # Auto-generate mock metrics for the new ad (90 days of data)
+        print(f"[DEBUG generate_video_ad] Generating mock metrics for ad_id={ad_id}...")
+        mock_metrics = generate_mock_metrics(campaign_id, ad_id, days=90)
+        with get_db_cursor() as cursor:
+            for metric in mock_metrics:
+                cursor.execute('''
+                    INSERT INTO campaign_metrics
+                    (campaign_id, ad_id, date, impressions, views, clicks, revenue, cost_per_impression, engagement_rate)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    metric["campaign_id"],
+                    metric["ad_id"],
+                    metric["date"],
+                    metric["impressions"],
+                    metric["views"],
+                    metric["clicks"],
+                    metric["revenue"],
+                    metric["cost_per_impression"],
+                    metric["engagement_rate"]
+                ))
+        print(f"[DEBUG generate_video_ad] Inserted {len(mock_metrics)} metric records")
+
         return {
             "status": "success",
             "message": "Video ad generated successfully",
@@ -298,7 +321,8 @@ async def generate_video_ad(
                 "prompt_used": prompt,
                 "duration_seconds": duration_seconds,
                 "source_image": image_row["image_path"],
-                "artifact_saved": tool_context is not None
+                "artifact_saved": tool_context is not None,
+                "metrics_generated": len(mock_metrics)
             }
         }
 
