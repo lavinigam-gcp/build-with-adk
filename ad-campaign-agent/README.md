@@ -2,6 +2,20 @@
 
 A multi-agent ADK system for fashion retail ad campaign management, showcasing the end-to-end journey from campaign creation to AI-powered video ad generation using **Veo 3.1** and **Gemini 3 Pro**.
 
+## How It Works
+
+From idea to video ad in minutes, not weeks. Just tell the AI what you need in plain English.
+
+![How It Works](assets/use_case_explainer.jpeg)
+
+**What Can You Do?**
+- Create ad campaigns for any location
+- Generate professional video ads from product photos
+- Get AI-powered insights on what's working
+- Compare performance across campaigns
+- Scale winning formulas to other campaigns
+- Visualize data with charts and maps
+
 ## Features
 
 - **Multi-Agent Architecture**: Coordinator agent with 3 specialized sub-agents
@@ -15,26 +29,21 @@ A multi-agent ADK system for fashion retail ad campaign management, showcasing t
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Coordinator Agent                         │
-│              (ad_campaign_agent - root)                      │
-├─────────────────┬──────────────────┬────────────────────────┤
-│                 │                  │                         │
-│  ┌──────────────▼───┐  ┌──────────▼────────┐  ┌────────────▼──────┐
-│  │  Campaign Agent  │  │   Media Agent     │  │  Analytics Agent  │
-│  ├──────────────────┤  ├───────────────────┤  ├───────────────────┤
-│  │ • create_campaign│  │ • generate_seed   │  │ • get_metrics     │
-│  │ • list_campaigns │  │   _image          │  │ • top_performers  │
-│  │ • get_campaign   │  │ • add_seed_image  │  │ • get_insights    │
-│  │ • update_campaign│  │ • analyze_image   │  │ • compare_campaigns│
-│  │ • get_locations  │  │ • generate_video  │  │ • generate_chart  │
-│  │ • search_stores  │  │   _ad             │  │ • generate_map    │
-│  │ • demographics   │  │ • video_variation │  │                   │
-│  │                  │  │ • apply_winning   │  │                   │
-│  │                  │  │   _formula        │  │                   │
-│  └──────────────────┘  └───────────────────┘  └───────────────────┘
-```
+### High-Level Overview
+
+![High-Level Architecture](assets/high_level_system_design.jpeg)
+
+The system uses a hierarchical multi-agent architecture:
+- **Coordinator Agent**: Routes requests to specialized sub-agents
+- **Campaign Agent** (7 tools): Campaign CRUD, location targeting, store search
+- **Media Agent** (9 tools): AI image/video generation, winning formula scaling
+- **Analytics Agent** (6 tools): Performance metrics, insights, visualizations
+
+### Detailed System Design
+
+For a comprehensive view of all 22 tools, data flows, and external service integrations:
+
+![Comprehensive Architecture](assets/overall_system_design.jpeg)
 
 ## Quick Start
 
