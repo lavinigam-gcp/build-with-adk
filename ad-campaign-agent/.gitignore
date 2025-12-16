@@ -17,9 +17,8 @@ generated/.adk/
 # Database (runtime data)
 *.db
 
-# Generated content (runtime)
-generated/
-selected/generated_seed_*.png
+# Documentation (internal plans)
+.docs/
 
 # Test outputs
 test_output.mp4
