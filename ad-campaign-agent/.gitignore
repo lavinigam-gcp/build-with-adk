@@ -14,8 +14,8 @@ build/
 app/.adk/
 generated/.adk/
 
-# Database (runtime data)
-*.db
+# Database backups (keep main db tracked)
+*.db.bak
 
 # Documentation (internal plans)
 .docs/
