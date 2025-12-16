@@ -1,7 +1,6 @@
 **Persona/User**: campaign manager, creative director, store operations manager. Director of Retail Media Networks, Programmatic Media Lead. Visual Merchandising Manager, Director of Instore Experience
 
-b  
-**Gemini Enterprise Queries**
+**Queries**
 
 Which campaigns are currently running?  
 → x campaigns are currently running {summary of campaigns\]

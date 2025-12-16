@@ -17,7 +17,7 @@
 import os
 
 # Model configuration
-MODEL = "gemini-3-pro-preview"
+MODEL = "gemini-3-pro-preview" #gemini-2.5-flash #gemini-3-pro-preview #gemini-2.5-pro 
 
 # API Keys (loaded from environment)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
