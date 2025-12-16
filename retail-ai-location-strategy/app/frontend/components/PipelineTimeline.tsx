@@ -4,54 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import type { AgentState, TimelineStepConfig, CollapsedSteps } from "@/lib/types";
 import { CollapsibleStep } from "./CollapsibleStep";
 import { StepOutputContent } from "./StepOutputContent";
-
-/**
- * Timeline step configurations matching the pipeline stages.
- */
-const TIMELINE_STEPS: TimelineStepConfig[] = [
-  {
-    id: "intake",
-    label: "Request Parsed",
-    stageKey: "intake",
-    tool: null,
-  },
-  {
-    id: "market_research",
-    label: "Market Research",
-    stageKey: "market_research",
-    tool: { icon: "\uD83D\uDD0D", name: "google_search" },
-  },
-  {
-    id: "competitor_mapping",
-    label: "Competitor Analysis",
-    stageKey: "competitor_mapping",
-    tool: { icon: "\uD83D\uDCCD", name: "search_places" },
-  },
-  {
-    id: "gap_analysis",
-    label: "Gap Analysis",
-    stageKey: "gap_analysis",
-    tool: { icon: "\uD83D\uDC0D", name: "python_code" },
-  },
-  {
-    id: "strategy_synthesis",
-    label: "Strategic Synthesis",
-    stageKey: "strategy_synthesis",
-    tool: { icon: "\uD83E\uDDE0", name: "deep_thinking" },
-  },
-  {
-    id: "report_generation",
-    label: "Executive Report",
-    stageKey: "report_generation",
-    tool: { icon: "\uD83D\uDCC4", name: "html_report" },
-  },
-  {
-    id: "infographic_generation",
-    label: "Visual Infographic",
-    stageKey: "infographic_generation",
-    tool: { icon: "\uD83C\uDFA8", name: "image_gen" },
-  },
-];
+import { TIMELINE_STEPS } from "@/lib/constants";
 
 interface PipelineTimelineProps {
   state: AgentState;
@@ -203,7 +156,6 @@ export function PipelineTimeline({
       {completedCount === TIMELINE_STEPS.length && (
         <div className="p-4 bg-green-50 border-t border-green-100">
           <div className="flex items-center justify-center gap-2 text-green-700">
-            <span className="text-xl">\u2705</span>
             <span className="font-medium">Analysis Complete</span>
           </div>
         </div>

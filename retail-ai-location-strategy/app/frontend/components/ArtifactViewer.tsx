@@ -5,16 +5,17 @@ import { useState } from "react";
 interface ArtifactViewerProps {
   htmlReport?: string;
   infographic?: string;
+  audioOverview?: string;
 }
 
 /**
  * ArtifactViewer provides a tabbed interface to view the generated
  * HTML executive report and infographic image.
  */
-export function ArtifactViewer({ htmlReport, infographic }: ArtifactViewerProps) {
-  const [activeTab, setActiveTab] = useState<"report" | "infographic">("report");
+export function ArtifactViewer({ htmlReport, infographic, audioOverview }: ArtifactViewerProps) {
+  const [activeTab, setActiveTab] = useState<"report" | "infographic" | "audio">("report");
 
-  if (!htmlReport && !infographic) return null;
+  if (!htmlReport && !infographic && !audioOverview) return null;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
@@ -45,6 +46,19 @@ export function ArtifactViewer({ htmlReport, infographic }: ArtifactViewerProps)
             <span className="mr-2">🎨</span>
             Infographic
           </button>
+        )}
+        {audioOverview && (
+            <button
+                onClick={() => setActiveTab("audio")}
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === "audio"
+                    ? "bg-blue-50 text-blue-700 border-b-2 border-blue-500"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}
+            >
+                <span className="mr-2">🎵</span>
+                Audio Overview
+            </button>
         )}
       </div>
 
@@ -94,6 +108,25 @@ export function ArtifactViewer({ htmlReport, infographic }: ArtifactViewerProps)
               className="w-full rounded-lg shadow-sm"
             />
           </div>
+        )}
+
+        {activeTab === "audio" && audioOverview && (
+            <div className="space-y-4">
+                <div className="flex justify-end">
+                <a
+                    href={audioOverview}
+                    download="audio_overview.mp3"
+                    className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                    Download Audio
+                </a>
+                </div>
+                <audio
+                controls
+                src={audioOverview}
+                className="w-full"
+                />
+            </div>
         )}
       </div>
     </div>

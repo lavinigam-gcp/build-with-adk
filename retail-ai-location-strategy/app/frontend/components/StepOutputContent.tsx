@@ -157,6 +157,42 @@ export function StepOutputContent({ stepId, state }: StepOutputContentProps) {
         </div>
       );
 
+    case "audio_overview_generation":
+      if (!state.audio_overview_base64) {
+        return <p className="text-gray-500 text-sm italic">Generating audio overview...</p>;
+      }
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-green-700">Audio overview generated</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const audio = new Audio(state.audio_overview_base64);
+                  audio.play();
+                }}
+                className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              >
+                Play Audio
+              </button>
+              <a
+                href={state.audio_overview_base64}
+                download="audio_overview.mp3"
+                className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+              >
+                Download MP3
+              </a>
+            </div>
+          </div>
+          {/* Small audio player preview */}
+          <audio
+            controls
+            src={state.audio_overview_base64}
+            className="w-full max-w-xs"
+          />
+        </div>
+      );
+
     default:
       return null;
   }

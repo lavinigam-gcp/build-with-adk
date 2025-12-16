@@ -285,7 +285,7 @@ def _extract_python_code_from_content(content: str) -> str:
     return "\n\n# ---\n\n".join(code_blocks)
 
 
-def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.Content]:
+async def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.Content]:
     """Log completion and save JSON artifact."""
     report = callback_context.state.get("strategic_report", {})
     logger.info("STAGE 3: COMPLETE - Strategic report generated")
@@ -304,7 +304,7 @@ def after_strategy_advisor(callback_context: CallbackContext) -> Optional[types.
                 data=json_str.encode('utf-8'),
                 mime_type="application/json"
             )
-            callback_context.save_artifact("intelligence_report.json", json_artifact)
+            await callback_context.save_artifact("intelligence_report.json", json_artifact)
             logger.info("  Saved artifact: intelligence_report.json")
         except Exception as e:
             logger.warning(f"  Failed to save JSON artifact: {e}")
@@ -326,8 +326,10 @@ def after_report_generator(callback_context: CallbackContext) -> Optional[types.
     logger.info("  (Artifact saved directly by generate_html_report tool)")
 
     stages = callback_context.state.get("stages_completed", [])
+    logger.info(f"Report generator: Before append, completedStages: {stages}")
     stages.append("report_generation")
     callback_context.state["stages_completed"] = stages
+    logger.info(f"Report generator: After append, completedStages: {callback_context.state.get('stages_completed')}")
 
     _check_artifact_generation_complete(callback_context)
     return None
@@ -343,8 +345,10 @@ def after_infographic_generator(callback_context: CallbackContext) -> Optional[t
     logger.info("  (Artifact saved directly by generate_infographic tool)")
 
     stages = callback_context.state.get("stages_completed", [])
+    logger.info(f"Infographic generator: Before append, completedStages: {stages}")
     stages.append("infographic_generation")
     callback_context.state["stages_completed"] = stages
+    logger.info(f"Infographic generator: After append, completedStages: {callback_context.state.get('stages_completed')}")
 
     _check_artifact_generation_complete(callback_context)
     return None
@@ -360,8 +364,10 @@ def after_audio_overview(callback_context: CallbackContext) -> Optional[types.Co
     logger.info("  (Artifact saved directly by generate_audio_overview tool)")
 
     stages = callback_context.state.get("stages_completed", [])
-    stages.append("audio_overview")
+    logger.info(f"Audio overview generator: Before append, completedStages: {stages}")
+    stages.append("audio_overview_generation")
     callback_context.state["stages_completed"] = stages
+    logger.info(f"Audio overview generator: After append, completedStages: {callback_context.state.get('stages_completed')}")
 
     _check_artifact_generation_complete(callback_context)
     return None
@@ -374,7 +380,7 @@ def _check_artifact_generation_complete(callback_context: CallbackContext) -> No
     summary when all 3 artifact stages (report, infographic, audio) are done.
     """
     stages = callback_context.state.get("stages_completed", [])
-    artifact_stages = {"report_generation", "infographic_generation", "audio_overview"}
+    artifact_stages = {"report_generation", "infographic_generation", "audio_overview_generation"}
     completed_artifacts = artifact_stages.intersection(set(stages))
 
     if len(completed_artifacts) == 3:
