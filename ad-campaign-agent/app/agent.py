@@ -36,7 +36,9 @@ Usage:
 """
 
 from google.adk.agents import LlmAgent
-from google.adk.code_executors import BuiltInCodeExecutor
+# NOTE: BuiltInCodeExecutor cannot be used with function calling tools
+# It's mutually exclusive - you get either tools OR code execution, not both
+# For chart generation, consider a separate visualization agent without tools
 
 from .config import MODEL, APP_NAME, APP_DESCRIPTION
 from .database.db import init_database
@@ -66,6 +68,7 @@ from .tools.metrics_tools import (
     get_top_performing_ads,
     get_campaign_insights,
     compare_campaigns,
+    generate_metrics_visualization,
 )
 from .tools.maps_tools import (
     get_campaign_locations,
@@ -195,7 +198,7 @@ You handle all analytics and insights tasks:
 - Find top performing ads and campaigns
 - Generate AI-powered insights about what works
 - Compare campaign performance
-- Create data visualizations (trendlines, charts)
+- Create visual charts and infographics using AI image generation
 
 ## Available Metrics
 The system tracks:
@@ -207,39 +210,35 @@ The system tracks:
 Each active campaign has 90 days of mock performance metrics.
 
 ## Visualization Capabilities
-Use code execution with pandas and matplotlib to create:
-- Trend lines showing metric changes over time
-- Bar charts comparing campaigns
-- Multi-metric dashboards
-- Performance comparison charts
+Use generate_metrics_visualization to create professional charts:
+- **trendline**: Line chart showing metric changes over time
+- **bar_chart**: Weekly bar chart comparison
+- **comparison**: Multi-metric KPI dashboard card
+- **infographic**: Comprehensive visual summary
+
+Charts are generated as images using Gemini 3 Pro Image and saved as artifacts.
 
 ## Response Guidelines
 - Summarize key metrics with actual numbers
 - Highlight trends and patterns
 - Identify characteristics of top performers
-- Use visualizations to illustrate data
 - Provide actionable recommendations
-
-## Code Execution Tips
-When creating visualizations:
-1. Import pandas and matplotlib
-2. Structure data as DataFrames
-3. Create clear, labeled charts
-4. Save figures and display them
+- Offer to generate visualizations when discussing data
+- Format data in clear tables when appropriate
 """
 
 analytics_agent = LlmAgent(
     model=MODEL,
     name="analytics_agent",
-    description="Analyzes campaign metrics, finds top performers, generates insights, creates trendlines and data visualizations",
+    description="Analyzes campaign metrics, finds top performers, generates insights, and creates visual charts/infographics",
     instruction=ANALYTICS_AGENT_INSTRUCTION,
     tools=[
         get_campaign_metrics,
         get_top_performing_ads,
         get_campaign_insights,
         compare_campaigns,
+        generate_metrics_visualization,
     ],
-    code_executor=BuiltInCodeExecutor(),
 )
 
 # =============================================================================
@@ -268,7 +267,8 @@ You have three specialized agents:
    - View campaign performance metrics
    - Find top performing ads
    - Get AI-powered insights
-   - Create trendlines and visualizations
+   - Compare campaign performance
+   - Generate visual charts and infographics
 
 ## When to Delegate
 - Campaign questions (list, create, update, locations) → Campaign Agent
@@ -282,7 +282,7 @@ When users want a full demo, guide them through:
 3. Generate a video ad (Media Agent)
 4. View performance metrics (Analytics Agent)
 5. Get insights and top performers (Analytics Agent)
-6. Create a trendline visualization (Analytics Agent)
+6. Compare campaigns (Analytics Agent)
 7. Show campaigns on a map (Campaign Agent)
 
 ## Response Guidelines
