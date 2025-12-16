@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# ADK runtime
+.adk/
+app/.adk/
+generated/.adk/
+
+# Database (runtime data)
+*.db
+
+# Generated content (runtime)
+generated/
+selected/generated_seed_*.png
+
+# Test outputs
+test_output.mp4
+test_generated_image.png
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.env
+
+# Logs
+*.log
+
+# Test files
+.test/
