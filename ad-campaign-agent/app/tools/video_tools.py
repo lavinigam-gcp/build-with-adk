@@ -456,6 +456,215 @@ def generate_video_variation(
     )
 
 
+async def apply_winning_formula(
+    target_campaign_id: int,
+    source_ad_id: int = None,
+    characteristics_to_apply: list = None,
+    target_image_id: int = None,
+    tool_context: ToolContext = None
+) -> dict:
+    """Apply successful characteristics from a top-performing ad to generate new content.
+
+    This tool bridges insights and action: after identifying what makes top performers
+    successful, use this to apply those winning characteristics to other campaigns.
+
+    Args:
+        target_campaign_id: The campaign to create a new video ad for
+        source_ad_id: The ad to learn from. If None, automatically uses the top performer.
+        characteristics_to_apply: List of characteristics to preserve from source.
+            Options: ["mood", "setting", "camera_style", "movement"]
+            If None, applies all available characteristics.
+        target_image_id: Specific image in target campaign to use. If None, uses first available.
+        tool_context: ADK ToolContext for artifact storage
+
+    Returns:
+        Dictionary with new video details and applied characteristics
+
+    Example:
+        # After seeing insights that ad #1 has winning "dreamy, romantic" mood:
+        apply_winning_formula(
+            target_campaign_id=3,  # Urban Professional campaign
+            source_ad_id=1,        # Top performer
+            characteristics_to_apply=["mood", "setting"]
+        )
+    """
+    print(f"[DEBUG apply_winning_formula] Starting...")
+    print(f"[DEBUG apply_winning_formula] target_campaign_id={target_campaign_id}")
+    print(f"[DEBUG apply_winning_formula] source_ad_id={source_ad_id}")
+    print(f"[DEBUG apply_winning_formula] characteristics_to_apply={characteristics_to_apply}")
+
+    valid_characteristics = ["mood", "setting", "camera_style", "movement", "key_feature"]
+
+    if characteristics_to_apply:
+        invalid = [c for c in characteristics_to_apply if c not in valid_characteristics]
+        if invalid:
+            return {
+                "status": "error",
+                "message": f"Invalid characteristics: {invalid}. Valid options: {valid_characteristics}"
+            }
+
+    with get_db_cursor() as cursor:
+        # Step 1: Get source ad (top performer or specified)
+        if source_ad_id:
+            print(f"[DEBUG apply_winning_formula] Using specified source_ad_id={source_ad_id}")
+            cursor.execute('''
+                SELECT ca.*, ci.metadata, ci.image_path as source_image,
+                       c.name as campaign_name,
+                       SUM(cm.revenue) as total_revenue
+                FROM campaign_ads ca
+                JOIN campaigns c ON ca.campaign_id = c.id
+                LEFT JOIN campaign_images ci ON ca.image_id = ci.id
+                LEFT JOIN campaign_metrics cm ON ca.id = cm.ad_id
+                WHERE ca.id = ? AND ca.status = 'completed'
+                GROUP BY ca.id
+            ''', (source_ad_id,))
+        else:
+            print(f"[DEBUG apply_winning_formula] Auto-selecting top performer by revenue...")
+            cursor.execute('''
+                SELECT ca.*, ci.metadata, ci.image_path as source_image,
+                       c.name as campaign_name,
+                       SUM(cm.revenue) as total_revenue
+                FROM campaign_ads ca
+                JOIN campaigns c ON ca.campaign_id = c.id
+                LEFT JOIN campaign_images ci ON ca.image_id = ci.id
+                LEFT JOIN campaign_metrics cm ON ca.id = cm.ad_id
+                WHERE ca.status = 'completed'
+                GROUP BY ca.id
+                ORDER BY total_revenue DESC
+                LIMIT 1
+            ''')
+
+        source_ad = cursor.fetchone()
+        if not source_ad:
+            return {
+                "status": "error",
+                "message": "No completed ads found to learn from" if not source_ad_id
+                          else f"Source ad {source_ad_id} not found or not completed"
+            }
+
+        print(f"[DEBUG apply_winning_formula] Source ad: id={source_ad['id']}, "
+              f"campaign='{source_ad['campaign_name']}', revenue=${source_ad['total_revenue'] or 0:,.2f}")
+
+        # Step 2: Extract winning characteristics from source ad metadata
+        source_metadata = json.loads(source_ad["metadata"]) if source_ad["metadata"] else {}
+
+        winning_formula = {
+            "mood": source_metadata.get("mood", "elegant, aspirational"),
+            "setting": source_metadata.get("setting_description", "beautiful setting"),
+            "camera_style": source_metadata.get("camera_style", "smoothly captures"),
+            "movement": source_metadata.get("movement", "moves gracefully"),
+            "key_feature": source_metadata.get("key_feature", "the details"),
+            "model_description": source_metadata.get("model_description", "a model"),
+        }
+
+        print(f"[DEBUG apply_winning_formula] Winning formula extracted:")
+        for k, v in winning_formula.items():
+            print(f"[DEBUG apply_winning_formula]   - {k}: {v}")
+
+        # Step 3: Get target campaign and image
+        cursor.execute('SELECT * FROM campaigns WHERE id = ?', (target_campaign_id,))
+        target_campaign = cursor.fetchone()
+        if not target_campaign:
+            return {
+                "status": "error",
+                "message": f"Target campaign {target_campaign_id} not found"
+            }
+
+        print(f"[DEBUG apply_winning_formula] Target campaign: '{target_campaign['name']}'")
+
+        # Get target image
+        if target_image_id:
+            cursor.execute('''
+                SELECT * FROM campaign_images
+                WHERE id = ? AND campaign_id = ?
+            ''', (target_image_id, target_campaign_id))
+        else:
+            cursor.execute('''
+                SELECT * FROM campaign_images
+                WHERE campaign_id = ?
+                ORDER BY created_at
+                LIMIT 1
+            ''', (target_campaign_id,))
+
+        target_image = cursor.fetchone()
+        if not target_image:
+            return {
+                "status": "error",
+                "message": f"No images found for target campaign {target_campaign_id}. Add a seed image first."
+            }
+
+        print(f"[DEBUG apply_winning_formula] Target image: {target_image['image_path']}")
+
+        # Get target image metadata for clothing description
+        target_metadata = json.loads(target_image["metadata"]) if target_image["metadata"] else {}
+
+    # Step 4: Build prompt that PRESERVES winning characteristics
+    # Use target image's clothing/garment but source ad's mood, setting, etc.
+
+    # Determine which characteristics to apply
+    chars_to_use = characteristics_to_apply if characteristics_to_apply else ["mood", "setting", "camera_style", "movement"]
+
+    # Build the prompt components
+    model_desc = target_metadata.get("model_description", winning_formula["model_description"])
+    clothing_desc = target_metadata.get("clothing_description", "elegant clothing")
+    garment_type = target_metadata.get("garment_type", "outfit")
+
+    # Apply winning characteristics
+    if "setting" in chars_to_use:
+        setting_desc = winning_formula["setting"]
+    else:
+        setting_desc = target_metadata.get("setting_description", "In a beautiful setting")
+
+    if "mood" in chars_to_use:
+        mood = winning_formula["mood"]
+    else:
+        mood = target_metadata.get("mood", "elegant, aspirational")
+
+    if "camera_style" in chars_to_use:
+        camera_style = winning_formula["camera_style"]
+    else:
+        camera_style = target_metadata.get("camera_style", "slowly pans")
+
+    if "movement" in chars_to_use:
+        movement = winning_formula["movement"]
+    else:
+        movement = target_metadata.get("movement", "moves gracefully")
+
+    if "key_feature" in chars_to_use:
+        key_feature = winning_formula["key_feature"]
+    else:
+        key_feature = target_metadata.get("key_feature", "the details")
+
+    # Construct the winning formula prompt
+    winning_prompt = f"""A cinematic fashion video featuring {model_desc} wearing {clothing_desc}. {setting_desc}, the {garment_type} {movement}. Camera {camera_style}, capturing {key_feature}. Atmosphere: {mood}. Professional lighting, high-end fashion advertisement style."""
+
+    print(f"[DEBUG apply_winning_formula] Generated prompt with winning formula:")
+    print(f"[DEBUG apply_winning_formula] {winning_prompt[:200]}...")
+    print(f"[DEBUG apply_winning_formula] Applied characteristics: {chars_to_use}")
+
+    # Step 5: Generate the video using the winning formula
+    result = await generate_video_ad(
+        campaign_id=target_campaign_id,
+        image_id=target_image["id"],
+        custom_prompt=winning_prompt,
+        duration_seconds=6,
+        tool_context=tool_context
+    )
+
+    # Enhance the result with winning formula details
+    if result["status"] == "success":
+        result["winning_formula_applied"] = {
+            "source_ad_id": source_ad["id"],
+            "source_campaign": source_ad["campaign_name"],
+            "source_revenue": round(source_ad["total_revenue"], 2) if source_ad["total_revenue"] else 0,
+            "characteristics_applied": chars_to_use,
+            "formula": {k: winning_formula[k] for k in chars_to_use if k in winning_formula}
+        }
+        result["message"] = f"Video generated using winning formula from top performer (Ad #{source_ad['id']})"
+
+    return result
+
+
 def list_campaign_ads(campaign_id: int) -> dict:
     """List all generated video ads for a campaign.
 

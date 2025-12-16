@@ -61,6 +61,7 @@ from .tools.image_tools import (
 from .tools.video_tools import (
     generate_video_ad,
     generate_video_variation,
+    apply_winning_formula,
     list_campaign_ads,
 )
 from .tools.metrics_tools import (
@@ -158,6 +159,13 @@ Existing images in the `selected/` folder:
 - You can also provide custom prompts for specific effects
 - Generated videos are saved as ADK artifacts
 
+## Applying Winning Formulas
+Use apply_winning_formula to scale what's working:
+- Takes characteristics (mood, setting, camera_style) from top-performing ads
+- Applies them to generate new videos for other campaigns
+- Can auto-select the top performer or use a specific ad
+- Preserves successful elements while using new campaign's clothing/imagery
+
 ## Image Generation Tips
 - Use generate_seed_image to create new fashion images with AI
 - Images are automatically analyzed for metadata
@@ -173,7 +181,7 @@ Existing images in the `selected/` folder:
 media_agent = LlmAgent(
     model=MODEL,
     name="media_agent",
-    description="Generates and manages images and videos: creates seed images with Gemini 3 Pro, generates video ads with Veo 3.1, analyzes images, creates variations",
+    description="Generates and manages images and videos: creates seed images with Gemini 3 Pro, generates video ads with Veo 3.1, analyzes images, creates variations, applies winning formulas from top performers",
     instruction=MEDIA_AGENT_INSTRUCTION,
     tools=[
         generate_seed_image,
@@ -183,6 +191,7 @@ media_agent = LlmAgent(
         list_available_images,
         generate_video_ad,
         generate_video_variation,
+        apply_winning_formula,
         list_campaign_ads,
     ],
 )
@@ -273,6 +282,7 @@ You have three specialized agents:
    - Generate video ads with Veo 3.1
    - Analyze images, add seed images to campaigns
    - Create video variations for A/B testing
+   - Apply winning formulas from top performers to other campaigns
 
 3. **Analytics Agent** - For metrics and insights
    - View campaign performance metrics
