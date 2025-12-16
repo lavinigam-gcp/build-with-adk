@@ -100,15 +100,17 @@ ad-campaign-agent/
 │       ├── video_tools.py      # Veo 3.1 video generation
 │       ├── metrics_tools.py    # Analytics & visualizations
 │       └── maps_tools.py       # Location & map features
+├── assets/                 # Architecture diagrams
 ├── selected/               # Seed images (static + AI-generated)
 ├── generated/              # Generated video ads
 ├── campaigns.db            # SQLite database with demo data
+├── DEMO_GUIDE.md           # Complete demo journeys & queries
 └── README.md
 ```
 
 ## Demo Flow
 
-The agent comes pre-loaded with 4 demo campaigns and sample data:
+The agent comes pre-loaded with 4 demo campaigns and 90 days of mock metrics:
 
 | Campaign | Location | Category | Status |
 |----------|----------|----------|--------|
@@ -117,25 +119,52 @@ The agent comes pre-loaded with 4 demo campaigns and sample data:
 | Urban Professional | Chicago, IL | Professional | Active |
 | Fall Essentials | Seattle, WA | Essentials | Draft |
 
-### Example Interactions
+### Demo Journeys
 
-**1. List campaigns:**
-> "Show me all active campaigns"
+We have 7 complete demo journeys for different personas. See **[DEMO_GUIDE.md](DEMO_GUIDE.md)** for full step-by-step walkthroughs.
 
-**2. Generate a video ad:**
-> "Generate a video ad for the Summer Blooms campaign"
+| Journey | Persona | Duration | Description |
+|---------|---------|----------|-------------|
+| Quick Overview | Executive | ~2 min | Get campaign status and top performers |
+| Campaign to Video | Campaign Manager | ~10 min | Create campaign and generate video ad |
+| Performance Analysis | Marketing Analyst | ~5 min | Compare campaigns, apply winning formula |
+| Geographic Strategy | Retail Director | ~5 min | Map visualizations and regional insights |
+| Creative Iteration | Creative Director | ~15 min | A/B test variations and predict performance |
+| Executive Demo | Stakeholders | ~20 min | Full platform capabilities showcase |
+| Image-First Workflow | Creative Team | ~12 min | Generate images then create video ads |
 
-**3. Get performance insights:**
-> "What are the top performing ads and why?"
+### Try These Prompts
 
-**4. Apply winning formula:**
-> "Apply the winning characteristics from our best ad to the Urban Professional campaign"
+**Campaign Management**
+```
+"Show me all active campaigns"
+"Create a campaign called 'Holiday Sparkle' for Miami stores"
+```
 
-**5. View campaigns on map:**
-> "Show all campaigns on a map with performance metrics"
+**Video Generation**
+```
+"Generate a video ad for the Summer Blooms campaign"
+"Create a setting variation with an urban rooftop background"
+```
 
-**6. Generate visualization:**
-> "Create a revenue trendline chart for Summer Blooms"
+**Analytics & Insights**
+```
+"What are the top 5 performing ads by revenue?"
+"Why is the LA campaign doing so well?"
+"Compare NYC vs Chicago performance"
+```
+
+**Scaling Success**
+```
+"Apply the winning formula from our best ad to Urban Professional"
+"Generate 3 variations with different moods"
+```
+
+**Visualizations**
+```
+"Show all campaigns on a map with performance metrics"
+"Create a revenue trendline chart for Summer Blooms"
+```
 
 ## Tools Reference
 
