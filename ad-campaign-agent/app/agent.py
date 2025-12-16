@@ -74,6 +74,7 @@ from .tools.maps_tools import (
     get_campaign_locations,
     search_nearby_stores,
     get_location_demographics,
+    generate_map_visualization,
 )
 
 # Initialize database and populate mock data on import
@@ -198,7 +199,7 @@ You handle all analytics and insights tasks:
 - Find top performing ads and campaigns
 - Generate AI-powered insights about what works
 - Compare campaign performance
-- Create visual charts and infographics using AI image generation
+- Create visual charts, infographics, and map visualizations using AI image generation
 
 ## Available Metrics
 The system tracks:
@@ -209,14 +210,22 @@ The system tracks:
 
 Each active campaign has 90 days of mock performance metrics.
 
-## Visualization Capabilities
+## Chart Visualization Capabilities
 Use generate_metrics_visualization to create professional charts:
 - **trendline**: Line chart showing metric changes over time
 - **bar_chart**: Weekly bar chart comparison
 - **comparison**: Multi-metric KPI dashboard card
 - **infographic**: Comprehensive visual summary
 
-Charts are generated as images using Gemini 3 Pro Image and saved as artifacts.
+## Map Visualization Capabilities
+Use generate_map_visualization to create geographic visualizations:
+- **performance_map**: All campaigns on US map with revenue bubbles
+- **regional_comparison**: Compare metrics by region (West/East/Midwest)
+- **category_by_region**: Fashion styles performance by geography
+- **market_opportunity**: Current coverage vs expansion potential
+- **campaign_heatmap**: Revenue/density heatmap visualization
+
+All visualizations are generated as images using Gemini 3 Pro Image and saved as artifacts.
 
 ## Response Guidelines
 - Summarize key metrics with actual numbers
@@ -224,13 +233,14 @@ Charts are generated as images using Gemini 3 Pro Image and saved as artifacts.
 - Identify characteristics of top performers
 - Provide actionable recommendations
 - Offer to generate visualizations when discussing data
+- For geographic questions, offer map visualizations
 - Format data in clear tables when appropriate
 """
 
 analytics_agent = LlmAgent(
     model=MODEL,
     name="analytics_agent",
-    description="Analyzes campaign metrics, finds top performers, generates insights, and creates visual charts/infographics",
+    description="Analyzes campaign metrics, finds top performers, generates insights, and creates visual charts/infographics and map visualizations",
     instruction=ANALYTICS_AGENT_INSTRUCTION,
     tools=[
         get_campaign_metrics,
@@ -238,6 +248,7 @@ analytics_agent = LlmAgent(
         get_campaign_insights,
         compare_campaigns,
         generate_metrics_visualization,
+        generate_map_visualization,
     ],
 )
 
@@ -269,6 +280,7 @@ You have three specialized agents:
    - Get AI-powered insights
    - Compare campaign performance
    - Generate visual charts and infographics
+   - Create map visualizations (performance maps, regional comparisons, heatmaps)
 
 ## When to Delegate
 - Campaign questions (list, create, update, locations) → Campaign Agent
