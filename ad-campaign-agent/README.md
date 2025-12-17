@@ -20,12 +20,14 @@ From idea to video ad in minutes, not weeks. Just tell the AI what you need in p
 
 - **Multi-Agent Architecture**: Coordinator agent with 3 specialized sub-agents
 - **Video Ad Generation**: Create cinematic fashion videos using Veo 3.1
+- **Video Analysis**: Auto-extract structured properties from generated videos using Gemini
+- **Property-Controlled Generation**: Generate videos with specific mood, energy, style, and color controls
 - **AI Image Generation**: Generate seed images with Gemini 3 Pro Image
 - **Image Analysis**: Extract fashion metadata (garment type, mood, setting, etc.)
 - **Campaign Management**: Full CRUD operations with location targeting
 - **Performance Analytics**: Metrics tracking, insights, and visualizations
 - **Map Visualizations**: Geographic campaign performance views
-- **Winning Formula**: Scale top-performing ad characteristics to other campaigns
+- **Winning Formula**: Scale top-performing ad characteristics (including video properties) to other campaigns
 
 ## Architecture
 
@@ -36,7 +38,7 @@ From idea to video ad in minutes, not weeks. Just tell the AI what you need in p
 The system uses a hierarchical multi-agent architecture:
 - **Coordinator Agent**: Routes requests to specialized sub-agents
 - **Campaign Agent** (7 tools): Campaign CRUD, location targeting, store search
-- **Media Agent** (9 tools): AI image/video generation, winning formula scaling
+- **Media Agent** (12 tools): AI image/video generation, video analysis, property-controlled generation
 - **Analytics Agent** (6 tools): Performance metrics, insights, visualizations
 
 ### Detailed System Design
@@ -94,12 +96,17 @@ ad-campaign-agent/
 │   ├── database/
 │   │   ├── db.py           # SQLite database connection
 │   │   └── mock_data.py    # Demo data population
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── video_properties.py  # Pydantic schema for video properties
 │   └── tools/
 │       ├── campaign_tools.py   # Campaign CRUD operations
 │       ├── image_tools.py      # Image generation & analysis
-│       ├── video_tools.py      # Veo 3.1 video generation
+│       ├── video_tools.py      # Veo 3.1 video generation & analysis
 │       ├── metrics_tools.py    # Analytics & visualizations
 │       └── maps_tools.py       # Location & map features
+├── scripts/
+│   └── backfill_video_properties.py  # One-time migration script
 ├── assets/                 # Architecture diagrams
 ├── selected/               # Seed images (static + AI-generated)
 ├── generated/              # Generated video ads
@@ -121,7 +128,7 @@ The agent comes pre-loaded with 4 demo campaigns and 90 days of mock metrics:
 
 ### Demo Journeys
 
-We have 7 complete demo journeys for different personas. See **[DEMO_GUIDE.md](DEMO_GUIDE.md)** for full step-by-step walkthroughs.
+We have 8 complete demo journeys for different personas. See **[DEMO_GUIDE.md](DEMO_GUIDE.md)** for full step-by-step walkthroughs.
 
 | Journey | Persona | Duration | Description |
 |---------|---------|----------|-------------|
@@ -132,6 +139,7 @@ We have 7 complete demo journeys for different personas. See **[DEMO_GUIDE.md](D
 | Creative Iteration | Creative Director | ~15 min | A/B test variations and predict performance |
 | Executive Demo | Stakeholders | ~20 min | Full platform capabilities showcase |
 | Image-First Workflow | Creative Team | ~12 min | Generate images then create video ads |
+| Property-Controlled Generation | Creative Director | ~12 min | Fine-tune video mood, energy, style, and colors |
 
 ### Try These Prompts
 
@@ -145,6 +153,13 @@ We have 7 complete demo journeys for different personas. See **[DEMO_GUIDE.md](D
 ```
 "Generate a video ad for the Summer Blooms campaign"
 "Create a setting variation with an urban rooftop background"
+```
+
+**Property-Controlled Video**
+```
+"Generate a quirky, high-energy video with warm colors for campaign 1"
+"Create a serene, calm video with dramatic lighting for campaign 3"
+"Get video properties for ad 21"
 ```
 
 **Analytics & Insights**
@@ -189,10 +204,13 @@ We have 7 complete demo journeys for different personas. See **[DEMO_GUIDE.md](D
 | `analyze_image` | Extract metadata (garment, mood, setting, etc.) |
 | `list_campaign_images` | List images associated with a campaign |
 | `list_available_images` | List all images in selected/ folder |
-| `generate_video_ad` | Create video ad with Veo 3.1 (4/6/8 seconds) |
+| `generate_video_ad` | Create video ad with Veo 3.1 (4/6/8 seconds), auto-analyzes properties |
+| `generate_video_with_properties` | Generate video with specific mood, energy, style, color controls |
+| `get_video_properties` | Get analyzed properties for any video ad |
+| `analyze_video` | Analyze video to extract structured properties (mood, energy, style, etc.) |
 | `generate_video_variation` | Create A/B test variant (setting/mood/angle/style) |
-| `apply_winning_formula` | Scale top performer characteristics to other campaigns |
-| `list_campaign_ads` | List all video ads for a campaign |
+| `apply_winning_formula` | Scale top performer characteristics (including video properties) to other campaigns |
+| `list_campaign_ads` | List all video ads for a campaign with their properties |
 
 ### Analytics Agent Tools
 
@@ -210,6 +228,7 @@ We have 7 complete demo journeys for different personas. See **[DEMO_GUIDE.md](D
 | Model | Purpose |
 |-------|---------|
 | `gemini-3-pro-preview` | Agent reasoning and coordination |
+| `gemini-2.5-pro` | Video analysis (structured property extraction) |
 | `gemini-3-pro-image-preview` | Seed image generation, charts, maps |
 | `veo-3.1-generate-preview` | Video ad generation (4/6/8 seconds) |
 
@@ -217,10 +236,25 @@ We have 7 complete demo journeys for different personas. See **[DEMO_GUIDE.md](D
 
 ```sql
 campaigns (id, name, description, category, city, state, status, created_at)
-campaign_images (id, campaign_id, image_path, metadata, created_at)
-campaign_ads (id, campaign_id, image_id, video_path, prompt_used, duration_seconds, status, created_at)
+campaign_images (id, campaign_id, image_path, image_type, metadata, created_at)
+campaign_ads (id, campaign_id, image_id, video_path, prompt_used, duration_seconds, status, video_properties, created_at)
 campaign_metrics (id, campaign_id, ad_id, date, impressions, views, clicks, revenue, cost_per_impression, engagement_rate)
 ```
+
+### Video Properties Schema
+
+The `video_properties` column stores a JSON object with 25+ properties extracted from video analysis:
+
+| Category | Properties |
+|----------|------------|
+| Mood/Emotion | `mood`, `mood_intensity`, `has_warmth` |
+| Visual Style | `visual_style`, `camera_movement`, `lighting_style` |
+| Energy/Pace | `energy_level`, `movement_amount` |
+| Color | `color_temperature`, `dominant_colors`, `color_saturation` |
+| Subject | `subject_count`, `garment_visibility`, `has_multiple_outfits` |
+| Audio | `audio_type`, `has_dialogue`, `music_tempo`, `audio_mood` |
+| Setting | `setting_type`, `time_of_day`, `background_complexity` |
+| Production | `aspect_ratio`, `has_text_overlays`, `has_brand_elements` |
 
 ## Environment Variables
 

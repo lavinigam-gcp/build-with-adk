@@ -562,6 +562,75 @@ Query: "Create a video from this new image too so we can A/B test the settings"
 
 ---
 
+## Journey 8: Property-Controlled Video Generation (Advanced - 5 steps)
+
+**Persona:** Creative Director fine-tuning video style
+**Duration:** ~12 minutes
+**Agents Used:** Media Agent, Analytics Agent
+
+### Step 1: View existing video properties
+```
+Query: "Show me the video properties for ad 21"
+```
+**Expected Response:**
+- Full video properties breakdown:
+  - Mood: romantic/warm/playful/etc.
+  - Energy level: calm/moderate/dynamic
+  - Visual style: cinematic/editorial/commercial
+  - Color temperature: warm/neutral/cool
+  - Camera movement: orbit/pan/static
+  - Dominant colors: ["pink", "white", "green"]
+  - Setting type: outdoor/studio/urban
+  - Lighting style: natural/studio/dramatic
+
+### Step 2: Generate video with specific properties
+```
+Query: "Generate a quirky, high-energy video with warm colors for campaign 1"
+```
+**Expected Response:**
+- Video generation started with property overrides
+- Properties applied: mood=quirky, energy_level=high_energy, color_temperature=warm
+- Templated prompt built from properties
+- Video generated and analyzed
+- Extracted properties shown for verification
+
+### Step 3: Try different property combinations
+```
+Query: "Generate a serene, calm video with cool colors and dramatic lighting for campaign 3"
+```
+**Expected Response:**
+- Video generated with:
+  - mood: serene
+  - energy_level: calm
+  - color_temperature: cool
+  - lighting_style: dramatic
+- Auto-analysis confirms properties match request
+- Saved as artifact
+
+### Step 4: Compare properties across ads
+```
+Query: "Show the video properties for all ads in campaign 1 and compare them"
+```
+**Expected Response:**
+- List of all campaign 1 ads with properties
+- Side-by-side comparison:
+  - Mood distribution
+  - Energy level patterns
+  - Color temperature trends
+- Insights on which combinations perform best
+
+### Step 5: Apply properties from top performer
+```
+Query: "Apply the video properties from our top performer to campaign 4"
+```
+**Expected Response:**
+- Top performer identified with its video_properties
+- Properties extracted: mood, visual_style, energy_level, color_temperature, lighting_style
+- New video generated for campaign 4 using these properties
+- Winning formula applied with precision control
+
+---
+
 ## Quick Reference: Single-Purpose Queries
 
 For quick demos of specific features:
@@ -582,6 +651,22 @@ For quick demos of specific features:
 "Generate a video ad for campaign [X]"
 "Generate an 8-second video with custom prompt: [prompt]"
 "Create a setting variation of ad [X]"
+```
+
+### Property-Controlled Video Generation
+```
+"Generate a quirky, high-energy video with warm colors for campaign [X]"
+"Generate a video for campaign [X] with mood serene and energy level calm"
+"Create a bold, cinematic video with dramatic lighting for campaign [X]"
+"Generate a playful video with cool color temperature for campaign [X]"
+```
+
+### Video Properties
+```
+"Get video properties for ad [X]"
+"Show video properties for all ads in campaign [X]"
+"What are the properties of our top performing videos?"
+"Compare video properties across our best ads"
 ```
 
 ### Analytics
@@ -626,3 +711,7 @@ For quick demos of specific features:
 5. **Show the handoff**: Point out when the coordinator delegates to specialized agents.
 
 6. **Highlight the data**: All mock metrics are realistic with 90 days of history per campaign.
+
+7. **Video properties are auto-extracted**: Every video is automatically analyzed after generation to extract mood, energy, style, and 25+ other properties. Show this by asking "Get video properties for ad X" after generating.
+
+8. **Property-controlled generation**: Demonstrate fine-grained control by requesting specific mood (quirky, warm, bold), energy (calm, dynamic), colors (warm, cool), and lighting (dramatic, natural). The system builds templated prompts from these properties.

@@ -91,6 +91,7 @@ def init_database() -> None:
             prompt_used TEXT,
             duration_seconds INTEGER DEFAULT 5,
             status TEXT DEFAULT 'completed' CHECK(status IN ('pending', 'generating', 'completed', 'failed')),
+            video_properties TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
             FOREIGN KEY (image_id) REFERENCES campaign_images(id) ON DELETE SET NULL
@@ -123,6 +124,31 @@ def init_database() -> None:
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_metrics_date ON campaign_metrics(date)')
 
     conn.commit()
+    conn.close()
+
+    # Run migrations for existing databases
+    run_migrations()
+
+
+def run_migrations() -> None:
+    """Run database migrations for schema updates.
+
+    This function handles adding new columns to existing databases.
+    It checks if columns exist before attempting to add them.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Check if video_properties column exists in campaign_ads
+    cursor.execute("PRAGMA table_info(campaign_ads)")
+    columns = [column[1] for column in cursor.fetchall()]
+
+    if "video_properties" not in columns:
+        print("[DB Migration] Adding video_properties column to campaign_ads...")
+        cursor.execute("ALTER TABLE campaign_ads ADD COLUMN video_properties TEXT")
+        conn.commit()
+        print("[DB Migration] video_properties column added successfully.")
+
     conn.close()
 
 

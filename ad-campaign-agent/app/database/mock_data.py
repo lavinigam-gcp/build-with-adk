@@ -19,6 +19,142 @@ import random
 from datetime import datetime, timedelta
 from .db import get_connection
 
+
+def generate_mock_video_properties(image_metadata: dict, campaign_name: str) -> dict:
+    """Generate mock video properties based on image metadata.
+
+    Args:
+        image_metadata: The image metadata dictionary
+        campaign_name: The campaign name for context
+
+    Returns:
+        Dictionary of mock video properties
+    """
+    # Map moods from image metadata to VideoProperties enum values
+    mood_mapping = {
+        "dreamy, romantic, aspirational": "romantic",
+        "elegant, sophisticated, glamorous": "sophisticated",
+        "bold, modern, confident": "bold",
+        "confident, professional, chic": "sophisticated",
+        "playful, feminine, cosmopolitan": "playful",
+        "sophisticated, minimalist, polished": "elegant",
+        "cozy, intellectual, warm": "warm",
+    }
+
+    raw_mood = image_metadata.get("mood", "elegant")
+    mood = mood_mapping.get(raw_mood, "elegant")
+
+    # Determine energy level based on movement description
+    movement = image_metadata.get("movement", "")
+    if "confidently" in movement or "dynamically" in movement or "strides" in movement:
+        energy_level = "dynamic"
+    elif "gracefully" in movement or "gently" in movement or "subtly" in movement:
+        energy_level = "moderate"
+    elif "twirls" in movement:
+        energy_level = "dynamic"
+    else:
+        energy_level = "moderate"
+
+    # Determine camera movement based on camera_style
+    camera_style = image_metadata.get("camera_style", "")
+    if "circles" in camera_style or "orbits" in camera_style:
+        camera_movement = "orbit"
+    elif "pans" in camera_style:
+        camera_movement = "pan"
+    elif "tracks" in camera_style or "follows" in camera_style:
+        camera_movement = "track"
+    elif "zooms" in camera_style:
+        camera_movement = "slow_zoom"
+    else:
+        camera_movement = "orbit"
+
+    # Determine setting type from setting_description
+    setting_desc = image_metadata.get("setting_description", "").lower()
+    if "studio" in setting_desc:
+        setting_type = "studio"
+        lighting_style = "studio"
+    elif "outdoor" in setting_desc or "meadow" in setting_desc or "field" in setting_desc:
+        setting_type = "outdoor"
+        lighting_style = "natural"
+    elif "urban" in setting_desc or "street" in setting_desc or "city" in setting_desc:
+        setting_type = "urban"
+        lighting_style = "natural"
+    elif "night" in setting_desc:
+        setting_type = "urban"
+        lighting_style = "dramatic"
+    else:
+        setting_type = "studio"
+        lighting_style = "studio"
+
+    # Determine time of day
+    if "golden hour" in setting_desc or "sun-drenched" in setting_desc or "sunny" in setting_desc:
+        time_of_day = "golden_hour"
+    elif "night" in setting_desc:
+        time_of_day = "night"
+    else:
+        time_of_day = "day"
+
+    # Color temperature based on mood
+    if mood in ["warm", "romantic"]:
+        color_temperature = "warm"
+    elif mood in ["bold", "sophisticated"]:
+        color_temperature = "neutral"
+    else:
+        color_temperature = "neutral"
+
+    # Determine warmth
+    has_warmth = mood in ["warm", "romantic", "playful"] or "warm" in setting_desc.lower()
+
+    # Extract colors from clothing description
+    clothing_desc = image_metadata.get("clothing_description", "").lower()
+    dominant_colors = []
+    color_keywords = ["red", "blue", "green", "pink", "white", "beige", "olive", "black", "gold"]
+    for color in color_keywords:
+        if color in clothing_desc:
+            dominant_colors.append(color)
+    if not dominant_colors:
+        dominant_colors = ["neutral"]
+
+    # Build style tags
+    style_tags = ["fashion", "professional"]
+    if "Summer" in campaign_name:
+        style_tags.extend(["summer", "breezy", "casual"])
+    elif "Evening" in campaign_name or "Formal" in campaign_name:
+        style_tags.extend(["formal", "evening", "elegant"])
+    elif "Professional" in campaign_name:
+        style_tags.extend(["business", "professional", "chic"])
+    elif "Fall" in campaign_name:
+        style_tags.extend(["autumn", "cozy", "layering"])
+
+    return {
+        "mood": mood,
+        "mood_intensity": round(random.uniform(0.6, 0.9), 2),
+        "has_warmth": has_warmth,
+        "visual_style": "cinematic",
+        "camera_movement": camera_movement,
+        "lighting_style": lighting_style,
+        "energy_level": energy_level,
+        "movement_amount": round(random.uniform(0.4, 0.7), 2),
+        "color_temperature": color_temperature,
+        "dominant_colors": dominant_colors,
+        "color_saturation": round(random.uniform(0.6, 0.8), 2),
+        "subject_count": 1,
+        "garment_visibility": round(random.uniform(0.7, 0.9), 2),
+        "has_multiple_outfits": False,
+        "audio_type": "none",
+        "has_dialogue": False,
+        "music_tempo": None,
+        "audio_mood": None,
+        "style_tags": style_tags,
+        "quality_score": round(random.uniform(0.7, 0.9), 2),
+        "setting_type": setting_type,
+        "time_of_day": time_of_day,
+        "background_complexity": round(random.uniform(0.2, 0.5), 2),
+        "aspect_ratio": "9:16",
+        "has_text_overlays": False,
+        "has_brand_elements": False
+    }
+
 # Pre-defined campaigns matching the seed images
 MOCK_CAMPAIGNS = [
     {
@@ -273,15 +409,22 @@ def populate_mock_data() -> dict:
 
             # Create a mock ad for active campaigns
             if campaign_data["status"] == "active":
+                # Generate mock video properties based on image metadata
+                video_properties = generate_mock_video_properties(
+                    image_data["metadata"],
+                    campaign_data["name"]
+                )
+
                 cursor.execute('''
-                    INSERT INTO campaign_ads (campaign_id, image_id, video_path, prompt_used, status)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO campaign_ads (campaign_id, image_id, video_path, prompt_used, status, video_properties)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
                     campaign_id,
                     image_id,
                     f"generated/campaign_{campaign_id}_ad_{image_id}.mp4",
                     f"Fashion video featuring {image_data['metadata'].get('clothing_description', 'elegant clothing')}",
-                    "completed"
+                    "completed",
+                    json.dumps(video_properties)
                 ))
                 ad_id = cursor.lastrowid
                 ads_created += 1

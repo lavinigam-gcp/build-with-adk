@@ -17,7 +17,8 @@
 import os
 
 # Model configuration
-MODEL = "gemini-3-pro-preview" #gemini-2.5-flash #gemini-3-pro-preview #gemini-2.5-pro 
+MODEL = "gemini-3-pro-preview"  # Main agent model (gemini-2.5-flash, gemini-3-pro-preview, gemini-2.5-pro)
+VIDEO_ANALYSIS_MODEL = "gemini-2.5-pro"  # For video analysis (supports video input)
 
 # API Keys (loaded from environment)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")

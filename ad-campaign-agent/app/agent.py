@@ -63,6 +63,9 @@ from .tools.video_tools import (
     generate_video_variation,
     apply_winning_formula,
     list_campaign_ads,
+    generate_video_with_properties,
+    get_video_properties,
+    analyze_video,
 )
 from .tools.metrics_tools import (
     get_campaign_metrics,
@@ -139,6 +142,8 @@ You handle all media generation and management tasks:
 - Add existing seed images to campaigns
 - Analyze images to extract fashion metadata
 - Generate video ads using Veo 3.1
+- Generate videos with specific property controls (mood, energy, style)
+- Analyze generated videos to extract properties
 - Create video variations for A/B testing
 - List campaign images and ads
 
@@ -154,15 +159,39 @@ Existing images in the `selected/` folder:
 
 ## Video Generation Tips
 - Veo 3.1 creates cinematic fashion videos from seed images
-- Videos can be 5 or 8 seconds long
+- Videos can be 4, 6, or 8 seconds long
 - The prompt is auto-generated from image analysis metadata
 - You can also provide custom prompts for specific effects
 - Generated videos are saved as ADK artifacts
+- After generation, videos are automatically analyzed for properties
+
+## Property-Controlled Video Generation
+Use generate_video_with_properties for precise control:
+- **mood**: quirky, warm, bold, serene, mysterious, playful, sophisticated, energetic, elegant, romantic
+- **visual_style**: cinematic, documentary, editorial, commercial, artistic, minimalist, vintage, modern
+- **energy_level**: calm, moderate, dynamic, high_energy
+- **color_temperature**: warm, neutral, cool
+- **camera_movement**: static, pan, orbit, track, dolly, crane, handheld, slow_zoom
+- **lighting_style**: natural, studio, dramatic, soft, high_key, low_key, golden_hour, neon
+
+Example: "Generate a quirky, high-energy video with warm colors" →
+generate_video_with_properties(mood="quirky", energy_level="high_energy", color_temperature="warm")
+
+## Video Properties Analysis
+After generation, each video is automatically analyzed and tagged with properties:
+- Mood, visual style, energy level
+- Color temperature, camera movement, lighting
+- Subject count, garment visibility
+- Setting type, time of day
+- Audio type (for future audio support)
+
+Use get_video_properties(ad_id) to retrieve properties for any video.
 
 ## Applying Winning Formulas
 Use apply_winning_formula to scale what's working:
-- Takes characteristics (mood, setting, camera_style) from top-performing ads
-- Applies them to generate new videos for other campaigns
+- Takes characteristics from top-performing ads' video_properties
+- Extended properties: mood, visual_style, energy_level, color_temperature, lighting_style
+- Legacy properties: setting, camera_style, movement
 - Can auto-select the top performer or use a specific ad
 - Preserves successful elements while using new campaign's clothing/imagery
 
@@ -176,12 +205,13 @@ Use apply_winning_formula to scale what's working:
 - Describe generated media in detail
 - Highlight key characteristics of images and videos
 - Provide status updates for long-running operations
+- When showing video properties, explain what they mean for performance
 """
 
 media_agent = LlmAgent(
     model=MODEL,
     name="media_agent",
-    description="Generates and manages images and videos: creates seed images with Gemini 3 Pro, generates video ads with Veo 3.1, analyzes images, creates variations, applies winning formulas from top performers",
+    description="Generates and manages images and videos: creates seed images with Gemini 3 Pro, generates video ads with Veo 3.1, generates videos with specific property controls (mood, energy, style), analyzes videos to extract properties, creates variations, applies winning formulas from top performers",
     instruction=MEDIA_AGENT_INSTRUCTION,
     tools=[
         generate_seed_image,
@@ -193,6 +223,10 @@ media_agent = LlmAgent(
         generate_video_variation,
         apply_winning_formula,
         list_campaign_ads,
+        # New tools for property-controlled generation
+        generate_video_with_properties,
+        get_video_properties,
+        analyze_video,
     ],
 )
 
