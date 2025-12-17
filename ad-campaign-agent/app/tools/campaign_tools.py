@@ -184,15 +184,13 @@ def get_campaign(campaign_id: int) -> dict:
                 "created_at": row["created_at"]
             })
 
-        # Get metrics summary (last 30 days)
+        # Get metrics summary (last 30 days) - In-store retail media metrics
         cursor.execute('''
             SELECT
                 SUM(impressions) as total_impressions,
-                SUM(views) as total_views,
-                SUM(clicks) as total_clicks,
-                SUM(revenue) as total_revenue,
-                AVG(cost_per_impression) as avg_cpi,
-                AVG(engagement_rate) as avg_engagement
+                AVG(dwell_time) as avg_dwell_time,
+                SUM(circulation) as total_circulation,
+                SUM(revenue) as total_revenue
             FROM campaign_metrics
             WHERE campaign_id = ?
             AND date >= date('now', '-30 days')
@@ -201,14 +199,19 @@ def get_campaign(campaign_id: int) -> dict:
 
         metrics_summary = None
         if metrics_row and metrics_row["total_impressions"]:
+            total_impressions = int(metrics_row["total_impressions"])
+            total_revenue = round(metrics_row["total_revenue"], 2)
+            # Compute RPI (revenue per impression) - the primary KPI
+            rpi = round(total_revenue / total_impressions, 4) if total_impressions > 0 else 0
+
             metrics_summary = {
                 "period": "last_30_days",
-                "total_impressions": int(metrics_row["total_impressions"]),
-                "total_views": int(metrics_row["total_views"]),
-                "total_clicks": int(metrics_row["total_clicks"]),
-                "total_revenue": round(metrics_row["total_revenue"], 2),
-                "avg_cost_per_impression": round(metrics_row["avg_cpi"], 4),
-                "avg_engagement_rate": round(metrics_row["avg_engagement"], 2)
+                "total_impressions": total_impressions,
+                "average_dwell_time": round(metrics_row["avg_dwell_time"], 1),
+                "total_circulation": int(metrics_row["total_circulation"]),
+                "total_revenue": total_revenue,
+                "revenue_per_impression": rpi,
+                "revenue_per_1000_impressions": round(rpi * 1000, 2)
             }
 
         return {

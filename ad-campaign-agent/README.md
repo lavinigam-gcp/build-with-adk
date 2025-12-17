@@ -216,10 +216,10 @@ We have 8 complete demo journeys for different personas. See **[DEMO_GUIDE.md](D
 
 | Tool | Description |
 |------|-------------|
-| `get_campaign_metrics` | Get daily/aggregated performance metrics |
-| `get_top_performing_ads` | Rank ads by revenue/impressions/engagement |
+| `get_campaign_metrics` | Get daily/aggregated in-store retail media metrics |
+| `get_top_performing_ads` | Rank ads by RPI/impressions/dwell_time/circulation |
 | `get_campaign_insights` | AI-generated insights and recommendations |
-| `compare_campaigns` | Compare metrics across multiple campaigns |
+| `compare_campaigns` | Compare RPI and metrics across campaigns |
 | `generate_metrics_visualization` | Create charts (trendline/bar/comparison/infographic) |
 | `generate_map_visualization` | Create map visualizations (performance/regional/heatmap) |
 
@@ -238,8 +238,17 @@ We have 8 complete demo journeys for different personas. See **[DEMO_GUIDE.md](D
 campaigns (id, name, description, category, city, state, status, created_at)
 campaign_images (id, campaign_id, image_path, image_type, metadata, created_at)
 campaign_ads (id, campaign_id, image_id, video_path, prompt_used, duration_seconds, status, video_properties, created_at)
-campaign_metrics (id, campaign_id, ad_id, date, impressions, views, clicks, revenue, cost_per_impression, engagement_rate)
+campaign_metrics (id, campaign_id, ad_id, date, impressions, dwell_time, circulation, revenue)
 ```
+
+### Retail Media Metrics
+
+| Metric | Description | Typical Range |
+|--------|-------------|---------------|
+| `impressions` | Number of ad displays on in-store screens | 15K-35K/day |
+| `dwell_time` | Seconds shoppers viewed the ad | 2-15 seconds |
+| `circulation` | Foot traffic count past display | 20K-100K/day |
+| `revenue_per_impression` | **PRIMARY KPI** (computed: revenue/impressions) | $0.02-$0.10 |
 
 ### Video Properties Schema
 

@@ -38,9 +38,9 @@ Query: "How are they performing? Which one is doing best?"
 ```
 **Expected Response:**
 - Comparison of all 3 active campaigns
-- Metrics: impressions, revenue, engagement rate
-- Clear winner identified (likely Summer Blooms or Evening Elegance based on mock data)
-- Revenue ranking
+- Metrics: impressions, dwell time, circulation, RPI (Revenue Per Impression)
+- Clear winner identified by RPI (likely Summer Blooms based on mock data)
+- RPI ranking (the primary KPI for retail media)
 
 ### Step 3: Get quick insights
 ```
@@ -134,9 +134,9 @@ Query: "Compare the performance of all our campaigns side by side"
 ```
 **Expected Response:**
 - Table/comparison of all campaigns
-- Metrics per campaign: impressions, views, clicks, revenue
-- Engagement rates compared
-- Rankings by revenue and engagement
+- Metrics per campaign: impressions, dwell time, circulation, revenue
+- RPI (Revenue Per Impression) comparison
+- Rankings by RPI and total revenue
 - Best performer highlighted
 
 ### Step 2: Find top performing ads
@@ -296,7 +296,7 @@ Query: "Which of these ads is performing best and what's its style?"
 ```
 **Expected Response:**
 - Top performing ad identified
-- Revenue and engagement metrics
+- Revenue, dwell time, and RPI metrics
 - Style analysis:
   - Mood (e.g., "dreamy, romantic")
   - Setting (e.g., "outdoor field")
@@ -384,7 +384,7 @@ Query: "Tell me about our best performing campaign in detail"
 **Expected Response:**
 - Top campaign identified
 - Full details: name, location, category
-- Total revenue, impressions, engagement
+- Total revenue, impressions, dwell time, RPI
 - Number of ads and images
 - Performance trend
 

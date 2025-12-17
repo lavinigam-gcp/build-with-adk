@@ -338,7 +338,7 @@ async def generate_map_visualization(
             - category_by_region: Fashion styles performance by geography
             - market_opportunity: Current coverage vs expansion potential
             - campaign_heatmap: Revenue/density heatmap visualization
-        metric: Metric to visualize - one of: revenue, impressions, engagement_rate, clicks
+        metric: Metric to visualize - one of: revenue_per_impression, impressions, dwell_time, circulation
         tool_context: ADK ToolContext for artifact storage
 
     Returns:
@@ -349,7 +349,7 @@ async def generate_map_visualization(
 
     valid_types = ["performance_map", "regional_comparison", "category_by_region",
                    "market_opportunity", "campaign_heatmap"]
-    valid_metrics = ["revenue", "impressions", "engagement_rate", "clicks"]
+    valid_metrics = ["revenue_per_impression", "impressions", "dwell_time", "circulation"]
 
     if visualization_type not in valid_types:
         return {
@@ -363,7 +363,7 @@ async def generate_map_visualization(
             "message": f"Invalid metric. Must be one of: {', '.join(valid_metrics)}"
         }
 
-    # Fetch all campaign data with metrics
+    # Fetch all campaign data with metrics (in-store retail media metrics)
     print(f"[DEBUG MAP VIZ] Step 1: Fetching campaign data from database...")
     with get_db_cursor() as cursor:
         cursor.execute('''
@@ -376,10 +376,9 @@ async def generate_map_visualization(
                 c.status,
                 COUNT(DISTINCT ca.id) as ad_count,
                 SUM(cm.impressions) as total_impressions,
-                SUM(cm.views) as total_views,
-                SUM(cm.clicks) as total_clicks,
-                SUM(cm.revenue) as total_revenue,
-                AVG(cm.engagement_rate) as avg_engagement
+                AVG(cm.dwell_time) as avg_dwell_time,
+                SUM(cm.circulation) as total_circulation,
+                SUM(cm.revenue) as total_revenue
             FROM campaigns c
             LEFT JOIN campaign_ads ca ON c.id = ca.campaign_id
             LEFT JOIN campaign_metrics cm ON c.id = cm.campaign_id
@@ -410,8 +409,10 @@ async def generate_map_visualization(
 
         revenue = round(camp['total_revenue'], 2) if camp['total_revenue'] else 0
         impressions = int(camp['total_impressions']) if camp['total_impressions'] else 0
-        engagement = round(camp['avg_engagement'], 2) if camp['avg_engagement'] else 0
-        clicks = int(camp['total_clicks']) if camp['total_clicks'] else 0
+        dwell_time = round(camp['avg_dwell_time'], 1) if camp['avg_dwell_time'] else 0
+        circulation = int(camp['total_circulation']) if camp['total_circulation'] else 0
+        # Compute RPI on the fly
+        rpi = round(revenue / impressions, 4) if impressions > 0 else 0
 
         total_revenue += revenue
         total_impressions += impressions
@@ -429,18 +430,20 @@ async def generate_map_visualization(
             "ad_count": camp['ad_count'] or 0,
             "revenue": revenue,
             "impressions": impressions,
-            "clicks": clicks,
-            "engagement_rate": engagement,
+            "dwell_time": dwell_time,
+            "circulation": circulation,
+            "revenue_per_impression": rpi,
         }
         campaign_data.append(camp_info)
 
         # Aggregate by region
         if region not in regional_data:
-            regional_data[region] = {"revenue": 0, "impressions": 0, "campaigns": 0, "engagement_sum": 0}
+            regional_data[region] = {"revenue": 0, "impressions": 0, "campaigns": 0, "dwell_time_sum": 0, "circulation": 0}
         regional_data[region]["revenue"] += revenue
         regional_data[region]["impressions"] += impressions
         regional_data[region]["campaigns"] += 1
-        regional_data[region]["engagement_sum"] += engagement
+        regional_data[region]["dwell_time_sum"] += dwell_time
+        regional_data[region]["circulation"] += circulation
 
         # Aggregate by category
         cat = camp['category'] or "other"
@@ -451,12 +454,15 @@ async def generate_map_visualization(
         category_data[cat]["campaigns"] += 1
         category_data[cat]["locations"].append(location_key)
 
-    # Calculate regional averages
+    # Calculate regional averages and RPI
     for region in regional_data:
         if regional_data[region]["campaigns"] > 0:
-            regional_data[region]["avg_engagement"] = round(
-                regional_data[region]["engagement_sum"] / regional_data[region]["campaigns"], 2
+            regional_data[region]["avg_dwell_time"] = round(
+                regional_data[region]["dwell_time_sum"] / regional_data[region]["campaigns"], 1
             )
+            regional_data[region]["rpi"] = round(
+                regional_data[region]["revenue"] / regional_data[region]["impressions"], 4
+            ) if regional_data[region]["impressions"] > 0 else 0
 
     print(f"[DEBUG MAP VIZ] Step 3: Data aggregation complete")
     print(f"[DEBUG MAP VIZ]   - Total revenue: ${total_revenue:,.2f}")
@@ -513,14 +519,15 @@ STYLE REQUIREMENTS:
 Create a high-quality, executive-ready map visualization suitable for business presentations."""
 
     elif visualization_type == "regional_comparison":
-        # Build regional comparison data
+        # Build regional comparison data (in-store retail media metrics)
         region_desc = ""
         for region, data in sorted(regional_data.items(), key=lambda x: x[1]['revenue'], reverse=True):
             region_desc += f"- {region}:\n"
             region_desc += f"  Revenue: ${data['revenue']:,.2f}\n"
             region_desc += f"  Impressions: {data['impressions']:,}\n"
+            region_desc += f"  RPI: ${data.get('rpi', 0):.4f}\n"
             region_desc += f"  Campaigns: {data['campaigns']}\n"
-            region_desc += f"  Avg Engagement: {data.get('avg_engagement', 0):.2f}%\n"
+            region_desc += f"  Avg Dwell Time: {data.get('avg_dwell_time', 0):.1f}s\n"
 
         visualization_prompt = f"""Create a professional regional comparison infographic showing advertising performance across US regions:
 

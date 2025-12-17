@@ -480,24 +480,23 @@ async def generate_video_ad(
             ''', (output_filename, video_properties.model_dump_json(), ad_id))
 
         # Auto-generate mock metrics for the new ad (90 days of data)
+        # Uses in-store retail media metrics: impressions, dwell_time, circulation, revenue
         print(f"[DEBUG generate_video_ad] Generating mock metrics for ad_id={ad_id}...")
         mock_metrics = generate_mock_metrics(campaign_id, ad_id, days=90)
         with get_db_cursor() as cursor:
             for metric in mock_metrics:
                 cursor.execute('''
                     INSERT INTO campaign_metrics
-                    (campaign_id, ad_id, date, impressions, views, clicks, revenue, cost_per_impression, engagement_rate)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (campaign_id, ad_id, date, impressions, dwell_time, circulation, revenue)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     metric["campaign_id"],
                     metric["ad_id"],
                     metric["date"],
                     metric["impressions"],
-                    metric["views"],
-                    metric["clicks"],
-                    metric["revenue"],
-                    metric["cost_per_impression"],
-                    metric["engagement_rate"]
+                    metric["dwell_time"],
+                    metric["circulation"],
+                    metric["revenue"]
                 ))
         print(f"[DEBUG generate_video_ad] Inserted {len(mock_metrics)} metric records")
 

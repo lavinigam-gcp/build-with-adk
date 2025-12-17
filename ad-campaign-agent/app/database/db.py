@@ -98,7 +98,9 @@ def init_database() -> None:
         )
     ''')
 
-    # Create campaign_metrics table
+    # Create campaign_metrics table (In-Store Retail Media metrics)
+    # Metrics: impressions, dwell_time, circulation, revenue
+    # RPI (revenue_per_impression) is computed on-the-fly as revenue/impressions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS campaign_metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,11 +108,9 @@ def init_database() -> None:
             ad_id INTEGER,
             date DATE NOT NULL,
             impressions INTEGER DEFAULT 0,
-            views INTEGER DEFAULT 0,
-            clicks INTEGER DEFAULT 0,
+            dwell_time REAL DEFAULT 0.0,
+            circulation INTEGER DEFAULT 0,
             revenue REAL DEFAULT 0.0,
-            cost_per_impression REAL DEFAULT 0.0,
-            engagement_rate REAL DEFAULT 0.0,
             FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
             FOREIGN KEY (ad_id) REFERENCES campaign_ads(id) ON DELETE SET NULL
         )
@@ -139,7 +139,7 @@ def run_migrations() -> None:
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Check if video_properties column exists in campaign_ads
+    # Migration 1: Add video_properties column to campaign_ads
     cursor.execute("PRAGMA table_info(campaign_ads)")
     columns = [column[1] for column in cursor.fetchall()]
 
@@ -148,6 +148,26 @@ def run_migrations() -> None:
         cursor.execute("ALTER TABLE campaign_ads ADD COLUMN video_properties TEXT")
         conn.commit()
         print("[DB Migration] video_properties column added successfully.")
+
+    # Migration 2: Check if campaign_metrics needs retail media migration
+    # This checks if old columns exist - if so, run migrate_metrics_schema.py
+    cursor.execute("PRAGMA table_info(campaign_metrics)")
+    metrics_columns = [column[1] for column in cursor.fetchall()]
+
+    if "views" in metrics_columns or "clicks" in metrics_columns:
+        print("[DB Migration] WARNING: campaign_metrics has old digital video columns.")
+        print("[DB Migration] Run: python -m scripts.migrate_metrics_schema")
+        print("[DB Migration] to migrate to in-store retail media metrics.")
+
+    # Check if new columns exist (for fresh databases or after migration)
+    if "dwell_time" not in metrics_columns and "views" not in metrics_columns:
+        # This is a fresh database with new schema - add columns
+        print("[DB Migration] Adding dwell_time column to campaign_metrics...")
+        cursor.execute("ALTER TABLE campaign_metrics ADD COLUMN dwell_time REAL DEFAULT 0.0")
+        print("[DB Migration] Adding circulation column to campaign_metrics...")
+        cursor.execute("ALTER TABLE campaign_metrics ADD COLUMN circulation INTEGER DEFAULT 0")
+        conn.commit()
+        print("[DB Migration] Retail media columns added successfully.")
 
     conn.close()
 

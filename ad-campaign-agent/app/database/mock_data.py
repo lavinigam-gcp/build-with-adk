@@ -292,7 +292,15 @@ MOCK_CAMPAIGNS = [
 
 
 def generate_mock_metrics(campaign_id: int, ad_id: int, days: int = 90) -> list:
-    """Generate realistic-looking mock metrics for a campaign.
+    """Generate realistic in-store retail media metrics for a campaign.
+
+    Metrics generated:
+    - impressions: Number of ad displays on in-store screens
+    - dwell_time: Average seconds viewing (2-15 seconds typical)
+    - circulation: Foot traffic past display location
+    - revenue: Revenue for RPI calculation
+
+    RPI (revenue_per_impression) is computed on-the-fly as revenue/impressions.
 
     Args:
         campaign_id: The campaign ID
@@ -305,51 +313,53 @@ def generate_mock_metrics(campaign_id: int, ad_id: int, days: int = 90) -> list:
     metrics = []
     today = datetime.now().date()
 
-    # Base values with campaign-specific multipliers
+    # Campaign-specific multipliers (some stores perform better)
     campaign_multipliers = {
-        1: 1.2,   # Summer Blooms - best performer
-        2: 0.9,   # Evening Elegance
-        3: 1.0,   # Urban Professional
-        4: 0.7,   # Fall Essentials (draft, lower metrics)
+        1: 1.2,   # Summer Blooms - LA flagship store
+        2: 0.9,   # Evening Elegance - NYC boutique
+        3: 1.0,   # Urban Professional - Chicago
+        4: 0.7,   # Fall Essentials - Seattle (draft)
     }
     multiplier = campaign_multipliers.get(campaign_id, 1.0)
 
-    base_impressions = random.randint(15000, 35000) * multiplier
+    # Base metrics for in-store retail
+    base_impressions = int(random.randint(15000, 35000) * multiplier)
+    base_circulation = int(base_impressions * random.uniform(2.0, 3.5))
 
     for day_offset in range(days):
         date = today - timedelta(days=day_offset)
 
-        # Add some weekly patterns (higher on weekends)
+        # Weekend patterns (more shoppers on weekends)
         day_of_week = date.weekday()
-        weekend_boost = 1.3 if day_of_week >= 5 else 1.0
+        weekend_boost = 1.4 if day_of_week >= 5 else 1.0
 
-        # Add trend (slight increase over time)
+        # Seasonal trends (slight decrease over time for older data)
         trend_factor = 1 + (day_offset * 0.002)
 
-        # Add random variation
+        # Daily variation
         daily_variation = random.uniform(0.8, 1.2)
 
+        # Calculate metrics
         impressions = int(base_impressions * weekend_boost * daily_variation / trend_factor)
-        views = int(impressions * random.uniform(0.25, 0.40))
-        clicks = int(views * random.uniform(0.02, 0.05))
+        circulation = int(base_circulation * weekend_boost * random.uniform(0.9, 1.1))
 
-        # Revenue: higher for better performing campaigns
-        revenue_per_impression = random.uniform(0.02, 0.06) * multiplier
+        # Dwell time: 2-15 seconds, weekend shoppers browse longer
+        base_dwell = random.uniform(3.0, 8.0)
+        weekend_dwell_boost = 1.3 if day_of_week >= 5 else 1.0
+        dwell_time = round(min(base_dwell * weekend_dwell_boost, 15.0), 1)
+
+        # Revenue: $0.02-$0.08 per impression for retail media
+        revenue_per_impression = random.uniform(0.02, 0.08) * multiplier
         revenue = round(impressions * revenue_per_impression, 2)
-
-        cost_per_impression = round(revenue / impressions if impressions > 0 else 0, 4)
-        engagement_rate = round((clicks / views * 100) if views > 0 else 0, 2)
 
         metrics.append({
             "campaign_id": campaign_id,
             "ad_id": ad_id,
             "date": date.isoformat(),
             "impressions": impressions,
-            "views": views,
-            "clicks": clicks,
-            "revenue": revenue,
-            "cost_per_impression": cost_per_impression,
-            "engagement_rate": engagement_rate
+            "dwell_time": dwell_time,
+            "circulation": circulation,
+            "revenue": revenue
         })
 
     return metrics
@@ -429,23 +439,21 @@ def populate_mock_data() -> dict:
                 ad_id = cursor.lastrowid
                 ads_created += 1
 
-                # Generate metrics for this ad
+                # Generate metrics for this ad (in-store retail media metrics)
                 metrics = generate_mock_metrics(campaign_id, ad_id, days=90)
                 for metric in metrics:
                     cursor.execute('''
                         INSERT INTO campaign_metrics
-                        (campaign_id, ad_id, date, impressions, views, clicks, revenue, cost_per_impression, engagement_rate)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (campaign_id, ad_id, date, impressions, dwell_time, circulation, revenue)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         metric["campaign_id"],
                         metric["ad_id"],
                         metric["date"],
                         metric["impressions"],
-                        metric["views"],
-                        metric["clicks"],
-                        metric["revenue"],
-                        metric["cost_per_impression"],
-                        metric["engagement_rate"]
+                        metric["dwell_time"],
+                        metric["circulation"],
+                        metric["revenue"]
                     ))
                     metrics_created += 1
 
