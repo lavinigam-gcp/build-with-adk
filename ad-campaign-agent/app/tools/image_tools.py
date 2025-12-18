@@ -25,6 +25,7 @@ from google.adk.tools import ToolContext
 
 from ..config import SELECTED_DIR
 from ..database.db import get_db_cursor
+from .. import storage
 
 
 def analyze_image(image_filename: str) -> dict:
@@ -44,9 +45,8 @@ def analyze_image(image_filename: str) -> dict:
     Returns:
         Dictionary with structured metadata for video prompt generation
     """
-    image_path = os.path.join(SELECTED_DIR, image_filename)
-
-    if not os.path.exists(image_path):
+    # Use storage module for both local and GCS mode
+    if not storage.image_exists(image_filename):
         return {
             "status": "error",
             "message": f"Image not found: {image_filename}"
@@ -55,9 +55,8 @@ def analyze_image(image_filename: str) -> dict:
     try:
         client = genai.Client()
 
-        # Read image file
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
+        # Read image file using storage abstraction
+        image_bytes = storage.read_image(image_filename)
 
         image_part = types.Part.from_bytes(
             data=image_bytes,
@@ -128,16 +127,17 @@ def add_seed_image(campaign_id: int, image_filename: str) -> dict:
     Returns:
         Dictionary with image details and analysis metadata
     """
-    image_path = os.path.join(SELECTED_DIR, image_filename)
-
-    if not os.path.exists(image_path):
-        # List available images
-        available = [f for f in os.listdir(SELECTED_DIR) if f.endswith(('.jpg', '.jpeg', '.png'))]
+    # Use storage module for both local and GCS mode
+    if not storage.image_exists(image_filename):
+        # List available images using storage abstraction
+        available = storage.list_seed_images()
         return {
             "status": "error",
             "message": f"Image not found: {image_filename}",
             "available_images": available
         }
+
+    image_path = storage.get_image_path(image_filename)
 
     with get_db_cursor() as cursor:
         # Check if campaign exists
@@ -217,12 +217,13 @@ def list_campaign_images(campaign_id: int) -> dict:
 
         images = []
         for row in cursor.fetchall():
-            image_path = os.path.join(SELECTED_DIR, row["image_path"])
+            # Use storage module for path resolution and existence check
+            image_path = storage.get_image_path(row["image_path"])
             images.append({
                 "id": row["id"],
                 "image_path": row["image_path"],
                 "full_path": image_path,
-                "exists": os.path.exists(image_path),
+                "exists": storage.image_exists(row["image_path"]),
                 "image_type": row["image_type"],
                 "metadata": json.loads(row["metadata"]) if row["metadata"] else None,
                 "created_at": row["created_at"]
@@ -238,30 +239,41 @@ def list_campaign_images(campaign_id: int) -> dict:
 
 
 def list_available_images() -> dict:
-    """List all available seed images in the selected/ folder.
+    """List all available seed images in the selected/ folder or GCS bucket.
 
     Returns:
         Dictionary with list of available image filenames
     """
-    if not os.path.exists(SELECTED_DIR):
-        return {
-            "status": "error",
-            "message": f"Selected images folder not found: {SELECTED_DIR}"
-        }
+    # Use storage module for both local and GCS mode
+    image_filenames = storage.list_seed_images()
+
+    if not image_filenames and storage.get_storage_mode() == "local":
+        if not os.path.exists(SELECTED_DIR):
+            return {
+                "status": "error",
+                "message": f"Selected images folder not found: {SELECTED_DIR}"
+            }
 
     images = []
-    for filename in os.listdir(SELECTED_DIR):
-        if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-            filepath = os.path.join(SELECTED_DIR, filename)
-            images.append({
-                "filename": filename,
-                "full_path": filepath,
-                "size_bytes": os.path.getsize(filepath)
-            })
+    for filename in image_filenames:
+        filepath = storage.get_image_path(filename)
+        # For local mode, include file size; for GCS mode, skip size (would require extra API call)
+        image_info = {
+            "filename": filename,
+            "full_path": filepath,
+        }
+        if storage.get_storage_mode() == "local":
+            try:
+                image_info["size_bytes"] = os.path.getsize(filepath)
+            except OSError:
+                image_info["size_bytes"] = None
+        images.append(image_info)
 
+    storage_location = SELECTED_DIR if storage.get_storage_mode() == "local" else f"gs://{os.environ.get('GCS_BUCKET', '')}/seed-images/"
     return {
         "status": "success",
-        "folder": SELECTED_DIR,
+        "folder": storage_location,
+        "storage_mode": storage.get_storage_mode(),
         "image_count": len(images),
         "images": images
     }
@@ -290,10 +302,12 @@ async def generate_seed_image(
     print(f"[DEBUG generate_seed_image] Starting for campaign_id={campaign_id}")
     print(f"[DEBUG generate_seed_image] Prompt: {prompt[:100]}...")
     print(f"[DEBUG generate_seed_image] Aspect ratio: {aspect_ratio}")
+    print(f"[DEBUG generate_seed_image] Storage mode: {storage.get_storage_mode()}")
 
-    # Ensure selected directory exists
-    os.makedirs(SELECTED_DIR, exist_ok=True)
-    print(f"[DEBUG generate_seed_image] SELECTED_DIR: {SELECTED_DIR}")
+    # For local mode, ensure selected directory exists
+    if storage.get_storage_mode() == "local":
+        os.makedirs(SELECTED_DIR, exist_ok=True)
+        print(f"[DEBUG generate_seed_image] SELECTED_DIR: {SELECTED_DIR}")
 
     # Validate campaign exists
     with get_db_cursor() as cursor:
@@ -341,19 +355,35 @@ async def generate_seed_image(
                 "message": "No image was generated. Try a different prompt."
             }
 
-        # Save image locally
+        # Save image - handle both local and GCS modes
         timestamp = int(time.time())
         filename = f"generated_seed_{campaign_id}_{timestamp}.png"
-        filepath = os.path.join(SELECTED_DIR, filename)
-        print(f"[DEBUG generate_seed_image] Saving image to: {filepath}")
-        generated_image.save(filepath)
-        print(f"[DEBUG generate_seed_image] Image saved successfully")
+
+        if storage.get_storage_mode() == "gcs":
+            # GCS mode: save to temp file, read bytes, upload to GCS
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                temp_path = tmp.name
+            print(f"[DEBUG generate_seed_image] Saving to temp file: {temp_path}")
+            generated_image.save(temp_path)
+            with open(temp_path, "rb") as f:
+                image_bytes = f.read()
+            os.unlink(temp_path)  # Clean up temp file
+            filepath = storage.save_image(filename, image_bytes)
+            print(f"[DEBUG generate_seed_image] Image uploaded to GCS: {filepath}")
+        else:
+            # Local mode: save directly to SELECTED_DIR
+            filepath = os.path.join(SELECTED_DIR, filename)
+            print(f"[DEBUG generate_seed_image] Saving image to: {filepath}")
+            generated_image.save(filepath)
+            print(f"[DEBUG generate_seed_image] Image saved successfully")
+            # Read bytes for artifact
+            with open(filepath, "rb") as f:
+                image_bytes = f.read()
 
         # Save as ADK artifact if tool_context is provided
         if tool_context:
             print("[DEBUG generate_seed_image] Saving as ADK artifact...")
-            with open(filepath, "rb") as f:
-                image_bytes = f.read()
             print(f"[DEBUG generate_seed_image] Image bytes size: {len(image_bytes)}")
             image_artifact = types.Part.from_bytes(data=image_bytes, mime_type="image/png")
             # save_artifact is async, await it properly

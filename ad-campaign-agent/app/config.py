@@ -25,12 +25,36 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 # Support both GOOGLE_MAPS_API_KEY and MAPS_API_KEY (from .env)
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY") or os.environ.get("MAPS_API_KEY")
 
-# Paths
+# Cloud Run detection
+IS_CLOUD_RUN = os.environ.get("K_SERVICE") is not None
+
+# GCS configuration - Always use GCS for storage (local and cloud)
+# This ensures consistent behavior between local development and Cloud Run
+DEFAULT_GCS_BUCKET = "kaggle-on-gcp-ad-campaign-assets"
+GCS_BUCKET = os.environ.get("GCS_BUCKET", DEFAULT_GCS_BUCKET)
+
+# GCS paths for assets
+GCS_SEED_IMAGES_PREFIX = "seed-images/"
+GCS_GENERATED_PREFIX = "generated/"
+
+# Paths (kept for backwards compatibility, but GCS is primary storage)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
+
+# Local directories (fallback only if GCS_BUCKET is explicitly set to empty string)
 SELECTED_DIR = os.path.join(PROJECT_DIR, "selected")
 GENERATED_DIR = os.path.join(PROJECT_DIR, "generated")
-DB_PATH = os.path.join(PROJECT_DIR, "campaigns.db")
+
+# Database path
+# - Local development: Use project root (persistent across runs)
+# - Cloud Run: Use app directory (ephemeral, mock data repopulates on each container start)
+if IS_CLOUD_RUN:
+    # In Cloud Run, the container has the app/ folder as working context
+    # Use a path inside the deployed directory
+    DB_PATH = os.path.join(BASE_DIR, "campaigns.db")
+else:
+    # Local development: use project root for persistence
+    DB_PATH = os.path.join(PROJECT_DIR, "campaigns.db")
 
 # App metadata
 APP_NAME = "ad_campaign_agent"

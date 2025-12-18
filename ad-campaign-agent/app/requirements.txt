@@ -1,0 +1,20 @@
+# Ad Campaign Agent Dependencies
+# For Cloud Run deployment with GCS storage
+
+# Google ADK for agent framework
+google-adk==1.21.0
+
+# Google Cloud Storage for asset persistence
+google-cloud-storage==2.19.0
+
+# Google Gen AI SDK
+google-genai==1.55.0
+
+# Google Maps for location features
+googlemaps==4.10.0
+
+# Image processing
+Pillow==10.2.0
+
+# Data validation
+pydantic==2.11.7

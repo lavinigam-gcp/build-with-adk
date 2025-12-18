@@ -29,6 +29,7 @@ from ..config import SELECTED_DIR, GENERATED_DIR, VIDEO_ANALYSIS_MODEL
 from ..database.db import get_db_cursor
 from ..database.mock_data import generate_mock_metrics
 from ..models.video_properties import VideoProperties
+from .. import storage
 
 
 def generate_video_prompt(metadata: dict, campaign_info: dict = None) -> str:
@@ -68,30 +69,42 @@ async def analyze_video(video_path: str) -> VideoProperties:
     This enables correlation between video properties and performance metrics.
 
     Args:
-        video_path: Path to the video file (absolute or relative to GENERATED_DIR)
+        video_path: Path to the video file (filename, relative path, or absolute path)
 
     Returns:
         VideoProperties: Structured properties extracted from the video
     """
     print(f"[DEBUG analyze_video] Analyzing video: {video_path}")
+    print(f"[DEBUG analyze_video] Storage mode: {storage.get_storage_mode()}")
 
-    # Handle relative paths
-    if not os.path.isabs(video_path):
-        full_path = os.path.join(GENERATED_DIR, video_path)
+    # Extract just the filename for storage operations
+    # Handle various input formats: gs:// URLs, absolute paths, relative paths, or bare filenames
+    if video_path.startswith("gs://"):
+        # GCS URL: gs://bucket/generated/filename.mp4 -> filename.mp4
+        filename = video_path.split("/")[-1]
+    elif os.path.isabs(video_path):
+        # Absolute local path: /path/to/filename.mp4 -> filename.mp4
+        filename = os.path.basename(video_path)
+    elif video_path.startswith("generated/"):
+        # Relative path: generated/filename.mp4 -> filename.mp4
+        filename = video_path.replace("generated/", "")
     else:
-        full_path = video_path
+        # Already a filename
+        filename = video_path
 
-    if not os.path.exists(full_path):
-        print(f"[DEBUG analyze_video] Video file not found: {full_path}")
+    print(f"[DEBUG analyze_video] Extracted filename: {filename}")
+
+    # Check if video exists using storage abstraction
+    if not storage.video_exists(filename):
+        print(f"[DEBUG analyze_video] Video file not found: {filename}")
         # Return default properties if file not found
         return VideoProperties()
 
     client = genai.Client()
 
-    # Read video file
+    # Read video file using storage abstraction
     print(f"[DEBUG analyze_video] Reading video file...")
-    with open(full_path, "rb") as f:
-        video_bytes = f.read()
+    video_bytes = storage.read_video(filename)
     print(f"[DEBUG analyze_video] Video size: {len(video_bytes)} bytes")
 
     # Create video part for Gemini
@@ -285,9 +298,12 @@ async def generate_video_ad(
             duration_seconds = 8
         print(f"[DEBUG generate_video_ad] Adjusted duration to: {duration_seconds}")
 
-    # Ensure generated directory exists
-    os.makedirs(GENERATED_DIR, exist_ok=True)
-    print(f"[DEBUG generate_video_ad] GENERATED_DIR: {GENERATED_DIR}")
+    # Ensure generated directory exists (only in local mode)
+    if storage.get_storage_mode() == "local":
+        os.makedirs(GENERATED_DIR, exist_ok=True)
+        print(f"[DEBUG generate_video_ad] GENERATED_DIR: {GENERATED_DIR}")
+    else:
+        print(f"[DEBUG generate_video_ad] Using GCS storage, skipping local directory creation")
 
     with get_db_cursor() as cursor:
         # Get campaign info
@@ -327,13 +343,15 @@ async def generate_video_ad(
             }
         print(f"[DEBUG generate_video_ad] Found image: {image_row['image_path']}")
 
-        image_path = os.path.join(SELECTED_DIR, image_row["image_path"])
-        print(f"[DEBUG generate_video_ad] Full image path: {image_path}")
-        if not os.path.exists(image_path):
-            print(f"[DEBUG generate_video_ad] Image file not found: {image_path}")
+        image_filename = image_row["image_path"]
+        image_path = storage.get_image_path(image_filename)
+        print(f"[DEBUG generate_video_ad] Image path: {image_path}")
+        print(f"[DEBUG generate_video_ad] Storage mode: {storage.get_storage_mode()}")
+        if not storage.image_exists(image_filename):
+            print(f"[DEBUG generate_video_ad] Image file not found: {image_filename}")
             return {
                 "status": "error",
-                "message": f"Image file not found: {image_path}"
+                "message": f"Image file not found: {image_filename}"
             }
         print(f"[DEBUG generate_video_ad] Image file exists")
 
@@ -367,16 +385,16 @@ async def generate_video_ad(
         print(f"[DEBUG generate_video_ad] Initializing genai client...")
         client = genai.Client()
 
-        # Load image using PIL and convert to bytes for Veo API
+        # Load image using storage abstraction and convert to bytes for Veo API
         # This follows the official Veo documentation pattern
-        print(f"[DEBUG generate_video_ad] Loading image with PIL...")
-        with PILImage.open(image_path) as im:
+        print(f"[DEBUG generate_video_ad] Loading image...")
+        image_bytes = storage.read_image(image_filename)
+        print(f"[DEBUG generate_video_ad] Image bytes size: {len(image_bytes)}")
+
+        # Use PIL to determine format and re-encode if needed
+        with PILImage.open(io.BytesIO(image_bytes)) as im:
             print(f"[DEBUG generate_video_ad] Image format: {im.format}, size: {im.size}")
-            image_bytes_io = io.BytesIO()
             img_format = im.format or "JPEG"
-            im.save(image_bytes_io, format=img_format)
-            image_bytes = image_bytes_io.getvalue()
-            print(f"[DEBUG generate_video_ad] Image bytes size: {len(image_bytes)}")
 
         # Create types.Image for Veo API (NOT types.Part)
         mime_type = f"image/{img_format.lower()}"
@@ -440,25 +458,54 @@ async def generate_video_ad(
 
         print(f"[DEBUG generate_video_ad] Found {len(operation.result.generated_videos)} generated video(s)")
 
-        # Download and save the generated video
-        # MUST call client.files.download() before saving per official docs
+        # Get the generated video
         generated_video = operation.result.generated_videos[0]
-        print(f"[DEBUG generate_video_ad] Downloading video...")
-        client.files.download(file=generated_video.video)
         timestamp = int(time.time())
         output_filename = f"campaign_{campaign_id}_ad_{ad_id}_{timestamp}.mp4"
-        output_path = os.path.join(GENERATED_DIR, output_filename)
-        print(f"[DEBUG generate_video_ad] Saving video to: {output_path}")
-        generated_video.video.save(output_path)
-        print(f"[DEBUG generate_video_ad] Video saved successfully")
+
+        # Handle video bytes differently for Vertex AI vs Gemini Developer API
+        # - Vertex AI: video_bytes are already in the response (no download needed)
+        # - Gemini Developer API: Must call client.files.download() to populate video_bytes
+        is_vertex_ai = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true"
+        print(f"[DEBUG generate_video_ad] Using Vertex AI: {is_vertex_ai}")
+
+        if is_vertex_ai:
+            # Vertex AI: video_bytes already present in response
+            print(f"[DEBUG generate_video_ad] Vertex AI mode - using video_bytes from response")
+            video_data = generated_video.video.video_bytes
+            if not video_data:
+                raise ValueError("No video_bytes in Vertex AI response")
+            print(f"[DEBUG generate_video_ad] Video bytes size: {len(video_data)}")
+        else:
+            # Gemini Developer API: Must download first, then use .save()
+            print(f"[DEBUG generate_video_ad] Gemini Developer API mode - downloading video...")
+            client.files.download(file=generated_video.video)
+            # For Gemini API, we need to save to temp file to get bytes
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                temp_path = tmp.name
+            generated_video.video.save(temp_path)
+            with open(temp_path, "rb") as f:
+                video_data = f.read()
+            os.unlink(temp_path)
+            print(f"[DEBUG generate_video_ad] Video bytes size: {len(video_data)}")
+
+        # Save video - handle both local and GCS storage modes
+        if storage.get_storage_mode() == "gcs":
+            output_path = storage.save_video(output_filename, video_data)
+            print(f"[DEBUG generate_video_ad] Video uploaded to GCS: {output_path}")
+        else:
+            output_path = os.path.join(GENERATED_DIR, output_filename)
+            print(f"[DEBUG generate_video_ad] Saving video to: {output_path}")
+            with open(output_path, "wb") as f:
+                f.write(video_data)
+            print(f"[DEBUG generate_video_ad] Video saved successfully")
 
         # Save as ADK artifact if tool_context is provided
         if tool_context:
             print(f"[DEBUG generate_video_ad] Saving as ADK artifact...")
-            with open(output_path, "rb") as f:
-                video_bytes = f.read()
-            print(f"[DEBUG generate_video_ad] Video bytes size: {len(video_bytes)}")
-            video_artifact = types.Part.from_bytes(data=video_bytes, mime_type="video/mp4")
+            # Use video_data we already have in memory (no need to re-read from storage)
+            video_artifact = types.Part.from_bytes(data=video_data, mime_type="video/mp4")
             # save_artifact is async, await it properly
             version = await tool_context.save_artifact(filename=output_filename, artifact=video_artifact)
             print(f"[DEBUG generate_video_ad] Artifact saved, version: {version}")
@@ -950,7 +997,10 @@ def list_campaign_ads(campaign_id: int) -> dict:
 
         ads = []
         for row in cursor.fetchall():
-            video_path = os.path.join(GENERATED_DIR, row["video_path"]) if row["video_path"] else None
+            video_filename = row["video_path"]
+            # Use storage abstraction for path resolution and existence check
+            video_path = storage.get_video_path(video_filename) if video_filename else None
+            video_exists = storage.video_exists(video_filename) if video_filename else False
             # Parse video properties if available
             video_props = None
             if row["video_properties"]:
@@ -960,9 +1010,9 @@ def list_campaign_ads(campaign_id: int) -> dict:
                     pass
             ads.append({
                 "id": row["id"],
-                "video_path": row["video_path"],
+                "video_path": video_filename,
                 "full_path": video_path,
-                "exists": os.path.exists(video_path) if video_path else False,
+                "exists": video_exists,
                 "prompt_used": row["prompt_used"],
                 "duration_seconds": row["duration_seconds"],
                 "status": row["status"],
@@ -1119,9 +1169,10 @@ async def get_video_properties(ad_id: int) -> dict:
 
         # If no properties exist, try to analyze the video
         if not video_props and ad["video_path"] and ad["status"] == "completed":
-            video_path = os.path.join(GENERATED_DIR, ad["video_path"])
-            if os.path.exists(video_path):
-                properties = await analyze_video(video_path)
+            video_filename = ad["video_path"]
+            # Use storage abstraction for existence check
+            if storage.video_exists(video_filename):
+                properties = await analyze_video(video_filename)
                 video_props = properties.model_dump()
                 # Save to database
                 cursor.execute('''
