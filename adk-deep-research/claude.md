@@ -20,16 +20,23 @@ The deep research agent transforms user queries into structured research plans, 
 ```
 adk-deep-research/
 ├── claude.md                    # This file - your guiding light
+├── .env                         # Environment variables (GCP project, sandbox IDs)
 ├── app/                         # MAIN AGENT - production version
 │   ├── agent.py                 # Core agent logic
 │   ├── config.py                # Configuration
 │   └── __init__.py
-├── experiments/                 # All experimental work goes here
-│   ├── experiment-001-NAME/     # Each experiment gets its own folder
+├── code_execution_01/           # EXPERIMENT 001: Financial Data Visualization
+│   ├── agent.py                 # SequentialAgent with 4 sub-agents
+│   ├── config.py                # Agent configuration
+│   ├── manage_sandbox.py        # Sandbox lifecycle management CLI
+│   ├── requirements.txt         # Python dependencies
+│   ├── README.md                # Experiment documentation (SUCCESS)
+│   └── __init__.py
+├── experiments/                 # Future experimental work
+│   ├── experiment-XXX-NAME/     # Each experiment gets its own folder
 │   │   ├── README.md            # Experiment goals, approach, results
 │   │   ├── app/                 # Modified agent code
 │   │   └── notes.md             # Ongoing observations
-│   ├── experiment-002-NAME/
 │   └── ...
 └── docs/                        # Shared documentation
     ├── architecture.md          # System architecture overview
@@ -371,7 +378,7 @@ Track major changes to `app/` agent:
 
 | Exp # | Name | Status | Outcome |
 |-------|------|--------|---------|
-| 001 | TBD | Planned | - |
+| 001 | Financial Data Visualization (code_execution_01) | SUCCESS | Multi-agent pipeline combining Google Search + Code Execution to generate financial charts |
 
 ---
 
@@ -441,6 +448,35 @@ Track major changes to `app/` agent:
 
 ---
 
-**Last Updated**: 2025-12-20
+## Completed Experiments Summary
+
+### Experiment 001: Financial Data Visualization (`code_execution_01/`)
+
+**Status**: SUCCESS
+
+**What it does**: A 4-stage SequentialAgent pipeline that:
+1. Fetches real-time financial data via Google Search
+2. Extracts structured data points using Pydantic schemas
+3. Generates matplotlib charts using AgentEngineSandbox code execution
+4. Creates a summary with key insights
+
+**Key Learnings**:
+- Sandbox only has matplotlib, numpy, pandas (no seaborn)
+- Pre-creating sandboxes significantly improves performance
+- `output_key` parameter is essential for agent-to-agent data flow
+- Pydantic schemas ensure reliable structured outputs
+
+**Example Query**: "Help me do PE analysis of quarter by quarter in last 5 years for top 5 stocks of S&P"
+
+**Run it**:
+```bash
+cd adk-deep-research
+export GOOGLE_CLOUD_PROJECT=your-project-id
+adk web code_execution_01
+```
+
+---
+
+**Last Updated**: 2025-12-21
 **Agent Version**: v1.0
 **Next Review**: After first 3 experiments completed
