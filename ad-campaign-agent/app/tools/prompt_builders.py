@@ -150,13 +150,25 @@ She is {pose_desc} {setting_desc} {time_desc}{props_desc}.
 
 {lighting_desc}. The garment is clearly visible with all its details: {key_features}.
 
-REQUIREMENTS:
+CRITICAL - PRODUCT PRESERVATION:
+- The garment must match the reference product EXACTLY - same design, color, fabric, and construction details
+- Do NOT alter, modify, or reinterpret the garment design in any way
+- Preserve all product details: stitching, patterns, textures, embellishments, neckline, sleeves, hemline
+
+QUALITY REQUIREMENTS:
 - Full body or 3/4 shot showing the complete garment
 - Model facing camera or slight angle
 - Sharp focus on the garment and model
 - Professional fashion advertisement quality
 - Vertical 9:16 aspect ratio composition
 - The scene should look like the perfect first frame of a fashion video ad
+
+HUMAN FIGURE QUALITY:
+- Realistic human proportions and anatomy
+- Natural, beautiful facial features - no distortion or artifacts
+- Properly proportioned hands and fingers
+- Natural skin texture and tone
+- Elegant, natural body posture
 
 Style: Luxury fashion campaign, magazine-quality, aspirational."""
 
@@ -233,11 +245,19 @@ def build_video_animation_prompt(
 
 The scene has {env_desc}. The movement is {energy_desc}.
 
-Focus on:
+CRITICAL - PRODUCT & QUALITY PRESERVATION:
+- Maintain the garment's exact appearance from the first frame throughout the video
 - The fabric's natural flow and drape as the model moves
 - Lighting playing across the garment's surface
 - Smooth, professional camera work
 - High-end fashion advertisement aesthetic
+
+HUMAN FIGURE QUALITY:
+- Maintain realistic human proportions throughout the animation
+- Natural, beautiful facial expressions - no distortion or morphing artifacts
+- Properly proportioned hands and fingers during movement
+- Fluid, natural body movement without anatomical errors
+- Consistent model appearance from start to end
 
 8 seconds. Vertical 9:16. Cinematic quality. Professional fashion video ad."""
 
@@ -357,6 +377,16 @@ She is {activity_desc} {setting_desc} {time_desc}.
 {camera_desc}, showcasing the garment's movement and drape.
 
 {lighting_desc}.
+
+CRITICAL - PRODUCT PRESERVATION:
+- The garment must match the reference product EXACTLY throughout the video
+- Preserve all product details: design, color, fabric, patterns, construction
+
+HUMAN FIGURE QUALITY:
+- Realistic human proportions and anatomy
+- Natural, beautiful facial features - no distortion or artifacts
+- Properly proportioned hands and fingers
+- Fluid, natural body movement
 
 Professional high-end fashion advertisement. 8 seconds. Vertical 9:16 format."""
 

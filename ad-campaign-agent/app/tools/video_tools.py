@@ -43,7 +43,14 @@ from google import genai
 from google.genai import types
 from google.adk.tools import ToolContext
 
-from ..config import SELECTED_DIR, GENERATED_DIR, VIDEO_ANALYSIS_MODEL, IMAGE_GENERATION
+from ..config import (
+    SELECTED_DIR,
+    GENERATED_DIR,
+    MODEL,
+    IMAGE_GENERATION,
+    VEO_MODEL,
+    VIDEO_DURATION_SECONDS,
+)
 from ..database.db import get_db_cursor, get_product, get_product_by_name
 from ..models.video_properties import VideoProperties
 from ..models.variation import CreativeVariation, get_default_variation, PRESET_VARIATIONS
@@ -154,9 +161,9 @@ Focus on:
 Respond with a JSON object matching the VideoProperties schema. Be precise and consistent in your analysis."""
 
     try:
-        print(f"[DEBUG analyze_video] Calling Gemini {VIDEO_ANALYSIS_MODEL}...")
+        print(f"[DEBUG analyze_video] Calling Gemini {MODEL} for video analysis...")
         response = client.models.generate_content(
-            model=VIDEO_ANALYSIS_MODEL,
+            model=MODEL,
             contents=[video_part, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -287,9 +294,9 @@ async def animate_scene_with_veo(
     image = types.Image(image_bytes=scene_image_bytes, mime_type="image/png")
 
     # Start video generation
-    print(f"[DEBUG animate_scene_with_veo] Calling Veo 3.1...")
+    print(f"[DEBUG animate_scene_with_veo] Calling Veo ({VEO_MODEL})...")
     operation = client.models.generate_videos(
-        model="veo-3.1-generate-preview",
+        model=VEO_MODEL,
         prompt=video_prompt,
         image=image,
         config=types.GenerateVideosConfig(
@@ -543,7 +550,7 @@ async def generate_video_from_product(
 
             client = genai.Client()
             operation = client.models.generate_videos(
-                model="veo-3.1-generate-preview",
+                model=VEO_MODEL,
                 prompt=video_prompt,
                 image=image,
                 config=types.GenerateVideosConfig(
@@ -920,9 +927,9 @@ async def generate_video_ad(
         image = types.Image(image_bytes=image_bytes, mime_type=mime_type)
 
         # Start video generation
-        print(f"[DEBUG generate_video_ad] Starting video generation with Veo 3.1...")
+        print(f"[DEBUG generate_video_ad] Starting video generation with {VEO_MODEL}...")
         operation = client.models.generate_videos(
-            model="veo-3.1-generate-preview",
+            model=VEO_MODEL,
             prompt=prompt,
             image=image,
             config=types.GenerateVideosConfig(

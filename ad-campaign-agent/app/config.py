@@ -17,9 +17,16 @@
 import os
 
 # Model configuration
+# Agent models
 MODEL = "gemini-3-flash-preview"  # Main agent model (gemini-2.5-flash, gemini-3-pro-preview, gemini-2.5-pro, gemini-3-flash-preview)
-VIDEO_ANALYSIS_MODEL = "gemini-3-flash-preview"  # For video analysis (supports video input)
-IMAGE_GENERATION = "gemini-3-pro-image-preview"
+
+# Media generation models
+IMAGE_GENERATION = "gemini-3-pro-image-preview"  # For scene image generation (Stage 1)
+VEO_MODEL = "veo-3.1-generate-preview"  # For video animation (Stage 2)
+
+# Video configuration
+VIDEO_ASPECT_RATIO = "9:16"  # Vertical format for retail displays
+VIDEO_DURATION_SECONDS = 8  # Default video duration (4, 6, or 8 for Veo 3.1)
 # API Keys (loaded from environment)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 # Support both GOOGLE_MAPS_API_KEY and MAPS_API_KEY (from .env)
