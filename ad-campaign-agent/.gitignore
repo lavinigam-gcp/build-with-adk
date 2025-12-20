@@ -43,3 +43,5 @@ test_generated_image.png
 
 # Test files
 .test/
+# Ignore local product images (stored in GCS)
+scripts/products/

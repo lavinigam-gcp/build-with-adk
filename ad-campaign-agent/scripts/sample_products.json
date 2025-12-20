@@ -1,0 +1,62 @@
+{
+  "description": "Sample product definitions for the product image generator",
+  "products": [
+    {
+      "name": "yellow-sequined-abby-dress",
+      "category": "dress",
+      "style": "fitted sequined cocktail dress",
+      "color": "bright yellow gold",
+      "fabric": "sequined mesh overlay on stretch lining",
+      "pattern": "all-over sequin embellishment",
+      "details": "scoop neckline, thin straps, bodycon silhouette, mini length, back zipper",
+      "occasion": "parties, New Year's Eve, special celebrations"
+    },
+    {
+      "name": "royal-blue-velvet-blazer",
+      "category": "outerwear",
+      "style": "single-breasted velvet blazer",
+      "color": "deep royal blue",
+      "fabric": "plush velvet",
+      "details": "peaked lapels, single button closure, welt pockets, fully lined",
+      "occasion": "holiday parties and formal events"
+    },
+    {
+      "name": "cream-cable-knit-sweater",
+      "category": "top",
+      "style": "oversized cable knit pullover",
+      "color": "ivory cream",
+      "fabric": "chunky wool blend",
+      "pattern": "classic cable knit texture",
+      "details": "crew neckline, dropped shoulders, ribbed cuffs and hem, relaxed fit",
+      "occasion": "cozy fall and winter casual"
+    },
+    {
+      "name": "burgundy-silk-wrap-top",
+      "category": "top",
+      "style": "elegant wrap blouse",
+      "color": "rich burgundy wine",
+      "fabric": "smooth silk charmeuse",
+      "details": "v-neck wrap front, long sleeves, self-tie waist, subtle sheen",
+      "occasion": "office to dinner transition"
+    },
+    {
+      "name": "floral-tiered-maxi-skirt",
+      "category": "skirt",
+      "style": "boho tiered maxi skirt",
+      "color": "multicolor florals on black background",
+      "fabric": "lightweight viscose",
+      "pattern": "romantic wildflower print",
+      "details": "elastic waist, three tiers, ruffled edges, full sweep",
+      "occasion": "summer festivals and garden parties"
+    },
+    {
+      "name": "tan-leather-culottes",
+      "category": "pants",
+      "style": "wide-leg leather culottes",
+      "color": "warm tan brown",
+      "fabric": "supple genuine leather",
+      "details": "high waist, side zip, cropped wide leg, clean minimal lines",
+      "occasion": "elevated everyday and smart casual"
+    }
+  ]
+}

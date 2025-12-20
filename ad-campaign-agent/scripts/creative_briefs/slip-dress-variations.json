@@ -1,0 +1,59 @@
+{
+  "description": "Creative brief for emerald satin slip dress - Evening elegance theme",
+  "variations": [
+    {
+      "name": "asian-rooftop-sunset",
+      "model_ethnicity": "asian",
+      "setting": "rooftop",
+      "time_of_day": "sunset",
+      "mood": "romantic",
+      "lighting": "golden",
+      "activity": "standing",
+      "camera_movement": "orbit",
+      "visual_style": "cinematic"
+    },
+    {
+      "name": "european-studio-editorial",
+      "model_ethnicity": "european",
+      "setting": "studio",
+      "mood": "elegant",
+      "lighting": "studio",
+      "activity": "posing",
+      "camera_movement": "dolly",
+      "visual_style": "editorial"
+    },
+    {
+      "name": "african-urban-night",
+      "model_ethnicity": "african",
+      "setting": "urban",
+      "time_of_day": "night",
+      "mood": "bold",
+      "lighting": "neon",
+      "activity": "walking",
+      "camera_movement": "tracking",
+      "visual_style": "cinematic"
+    },
+    {
+      "name": "latina-luxury-interior",
+      "model_ethnicity": "latina",
+      "setting": "luxury-interior",
+      "mood": "sophisticated",
+      "lighting": "soft",
+      "activity": "sitting",
+      "camera_movement": "slow-pan",
+      "visual_style": "editorial"
+    },
+    {
+      "name": "south-asian-garden-romantic",
+      "model_ethnicity": "south-asian",
+      "setting": "garden",
+      "time_of_day": "golden-hour",
+      "mood": "romantic",
+      "lighting": "natural",
+      "activity": "walking",
+      "props": ["flowers"],
+      "camera_movement": "tracking",
+      "visual_style": "cinematic"
+    }
+  ]
+}
