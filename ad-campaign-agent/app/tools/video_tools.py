@@ -12,23 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Video generation tools using Veo 3.1 API."""
+"""Video generation tools using two-stage pipeline.
+
+Two-Stage Video Generation Pipeline:
+    Stage 1: Scene Image (Gemini 2.0 Flash Exp)
+        - Input: Product image + CreativeVariation parameters
+        - Output: Scene-ready first frame (model wearing product)
+        - Saved as: thumbnail
+
+    Stage 2: Video Animation (Veo 3.1)
+        - Input: Scene image + Animation prompt
+        - Output: 8-second 9:16 video
+        - Saved as: final video
+
+HITL Workflow:
+    - Videos are generated with status='generated'
+    - NO metrics are created until activation
+    - Use review_tools.activate_video() to push live
+"""
 
 import io
 import json
 import os
 import time
-from typing import Optional, Dict, Any
+from datetime import datetime
+from typing import Optional, Dict, Any, Tuple
 
 from PIL import Image as PILImage
 from google import genai
 from google.genai import types
 from google.adk.tools import ToolContext
 
-from ..config import SELECTED_DIR, GENERATED_DIR, VIDEO_ANALYSIS_MODEL
-from ..database.db import get_db_cursor
-from ..database.mock_data import generate_mock_metrics
+from ..config import SELECTED_DIR, GENERATED_DIR, VIDEO_ANALYSIS_MODEL, IMAGE_GENERATION
+from ..database.db import get_db_cursor, get_product, get_product_by_name
 from ..models.video_properties import VideoProperties
+from ..models.variation import CreativeVariation, get_default_variation, PRESET_VARIATIONS
+from .prompt_builders import build_scene_image_prompt, build_video_animation_prompt, build_creative_prompt
 from .. import storage
 
 
@@ -156,6 +175,505 @@ Respond with a JSON object matching the VideoProperties schema. Be precise and c
         print(f"[DEBUG analyze_video] Error analyzing video: {str(e)}")
         # Return default properties on error
         return VideoProperties()
+
+
+# =============================================================================
+# Two-Stage Video Generation Pipeline
+# =============================================================================
+
+async def generate_scene_image(
+    product: Dict[str, Any],
+    variation: CreativeVariation,
+    product_image_bytes: bytes = None
+) -> Tuple[bytes, str]:
+    """Stage 1: Generate a scene-ready first frame image.
+
+    Creates an image of a model wearing the product in the desired setting,
+    which will be used as the first frame for video generation.
+
+    Args:
+        product: Product dictionary with metadata (from products table)
+        variation: CreativeVariation parameters controlling the scene
+        product_image_bytes: Optional product image bytes for reference
+
+    Returns:
+        Tuple of (scene_image_bytes, scene_prompt)
+    """
+    print(f"[DEBUG generate_scene_image] Starting scene generation for product: {product.get('name')}")
+    print(f"[DEBUG generate_scene_image] Variation: {variation.name}")
+
+    # Build scene prompt from product and variation
+    scene_prompt = build_scene_image_prompt(product, variation)
+    print(f"[DEBUG generate_scene_image] Scene prompt: {scene_prompt[:200]}...")
+
+    client = genai.Client()
+
+    # Use Gemini 2.0 Flash Exp for image generation (imagen-3.0-generate-002 alternative)
+    # For now, using native image generation via Gemini
+    try:
+        contents = [scene_prompt]
+
+        # If we have product image, include it as reference
+        if product_image_bytes:
+            print(f"[DEBUG generate_scene_image] Including product image as reference")
+            image_part = types.Part.from_bytes(
+                data=product_image_bytes,
+                mime_type="image/png"
+            )
+            contents = [
+                "Use this product image as reference for the garment. Generate a scene with a model wearing this exact garment:\n",
+                image_part,
+                "\n" + scene_prompt
+            ]
+
+        response = client.models.generate_content(
+            model=IMAGE_GENERATION,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=["image", "text"]
+            )
+        )
+
+        # Extract image from response
+        scene_image_bytes = None
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'inline_data') and part.inline_data:
+                scene_image_bytes = part.inline_data.data
+                print(f"[DEBUG generate_scene_image] Scene image generated: {len(scene_image_bytes)} bytes")
+                break
+
+        if not scene_image_bytes:
+            raise ValueError("No image generated in response")
+
+        return scene_image_bytes, scene_prompt
+
+    except Exception as e:
+        print(f"[DEBUG generate_scene_image] Error: {str(e)}")
+        raise
+
+
+async def animate_scene_with_veo(
+    scene_image_bytes: bytes,
+    product: Dict[str, Any],
+    variation: CreativeVariation,
+    duration_seconds: int = 8
+) -> Tuple[bytes, str]:
+    """Stage 2: Animate a scene image into a video using Veo 3.1.
+
+    Args:
+        scene_image_bytes: Scene image bytes from Stage 1
+        product: Product dictionary with metadata
+        variation: CreativeVariation parameters
+        duration_seconds: Video duration (4, 6, or 8 seconds)
+
+    Returns:
+        Tuple of (video_bytes, video_prompt)
+    """
+    print(f"[DEBUG animate_scene_with_veo] Starting animation for: {product.get('name')}")
+    print(f"[DEBUG animate_scene_with_veo] Duration: {duration_seconds}s")
+
+    # Veo 3.1 only accepts duration of 4, 6, or 8 seconds
+    valid_durations = [4, 6, 8]
+    if duration_seconds not in valid_durations:
+        duration_seconds = 8  # Default to 8 for best quality
+
+    # Build animation-focused prompt
+    video_prompt = build_video_animation_prompt(product, variation)
+    print(f"[DEBUG animate_scene_with_veo] Animation prompt: {video_prompt[:200]}...")
+
+    client = genai.Client()
+
+    # Create image for Veo API
+    image = types.Image(image_bytes=scene_image_bytes, mime_type="image/png")
+
+    # Start video generation
+    print(f"[DEBUG animate_scene_with_veo] Calling Veo 3.1...")
+    operation = client.models.generate_videos(
+        model="veo-3.1-generate-preview",
+        prompt=video_prompt,
+        image=image,
+        config=types.GenerateVideosConfig(
+            number_of_videos=1,
+            duration_seconds=duration_seconds,
+        ),
+    )
+
+    # Poll for completion
+    max_wait_time = 600  # 10 minutes
+    poll_interval = 20
+    waited = 0
+
+    while not operation.done:
+        if waited >= max_wait_time:
+            raise TimeoutError(f"Video generation timed out after {max_wait_time} seconds")
+
+        print(f"[DEBUG animate_scene_with_veo] Waiting... ({waited}s elapsed)")
+        time.sleep(poll_interval)
+        waited += poll_interval
+        operation = client.operations.get(operation)
+
+    print(f"[DEBUG animate_scene_with_veo] Operation completed after {waited}s")
+
+    # Check result
+    if operation.result is None or not operation.result.generated_videos:
+        raise ValueError("Video generation completed but returned no result")
+
+    # Extract video bytes
+    generated_video = operation.result.generated_videos[0]
+
+    is_vertex_ai = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true"
+
+    if is_vertex_ai:
+        video_bytes = generated_video.video.video_bytes
+        if not video_bytes:
+            raise ValueError("No video_bytes in Vertex AI response")
+    else:
+        # Gemini Developer API: Must download first
+        client.files.download(file=generated_video.video)
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            temp_path = tmp.name
+        generated_video.video.save(temp_path)
+        with open(temp_path, "rb") as f:
+            video_bytes = f.read()
+        os.unlink(temp_path)
+
+    print(f"[DEBUG animate_scene_with_veo] Video generated: {len(video_bytes)} bytes")
+    return video_bytes, video_prompt
+
+
+def generate_video_filename(product_name: str, variation_name: str) -> str:
+    """Generate a descriptive video filename.
+
+    Format: {product-name}-{MMDDYY}-{variation-name}.mp4
+
+    Args:
+        product_name: Product name (already hyphenated)
+        variation_name: Variation name (already hyphenated)
+
+    Returns:
+        Video filename string
+    """
+    date_str = datetime.now().strftime("%m%d%y")
+    return f"{product_name}-{date_str}-{variation_name}.mp4"
+
+
+def save_video_metadata(
+    video_filename: str,
+    product: Dict[str, Any],
+    variation: CreativeVariation,
+    scene_prompt: str,
+    video_prompt: str,
+    pipeline_type: str = "two-stage"
+) -> str:
+    """Save video metadata alongside the video file.
+
+    Creates a .txt file with the same name as the video containing
+    all generation parameters for reproducibility.
+
+    Args:
+        video_filename: The video filename (without path)
+        product: Product dictionary
+        variation: CreativeVariation used
+        scene_prompt: Stage 1 prompt
+        video_prompt: Stage 2 prompt
+        pipeline_type: 'two-stage' or 'single-stage'
+
+    Returns:
+        Path to the metadata file
+    """
+    metadata_filename = video_filename.replace(".mp4", ".txt")
+
+    metadata_content = f"""Product: {product.get('name', 'unknown')}
+Variation: {variation.name}
+Pipeline: {pipeline_type.title()} {'(Scene + Animation)' if pipeline_type == 'two-stage' else ''}
+Generated: {datetime.now().isoformat()}
+
+Variation Parameters:
+{json.dumps(variation.to_dict(), indent=2)}
+
+STAGE 1 - Scene Image Prompt:
+{scene_prompt}
+
+STAGE 2 - Video Generation Prompt:
+{video_prompt}
+"""
+
+    # Save metadata file
+    if storage.get_storage_mode() == "gcs":
+        # For GCS, save alongside video
+        storage.save_video(metadata_filename, metadata_content.encode('utf-8'))
+        metadata_path = storage.get_video_path(metadata_filename)
+    else:
+        metadata_path = os.path.join(GENERATED_DIR, metadata_filename)
+        with open(metadata_path, "w") as f:
+            f.write(metadata_content)
+
+    print(f"[DEBUG save_video_metadata] Saved metadata to: {metadata_path}")
+    return metadata_path
+
+
+async def generate_video_from_product(
+    campaign_id: int,
+    product_id: int,
+    variation: Optional[CreativeVariation] = None,
+    use_two_stage: bool = True,
+    duration_seconds: int = 8,
+    tool_context: ToolContext = None
+) -> dict:
+    """Generate a video ad using the two-stage pipeline.
+
+    This is the primary video generation function that:
+    1. Uses product from the products table
+    2. Applies CreativeVariation parameters
+    3. Generates via two-stage pipeline (scene image → video animation)
+    4. Saves to campaign_videos table with status='generated'
+    5. Does NOT create mock metrics (metrics only on activation)
+
+    Args:
+        campaign_id: The campaign to generate for
+        product_id: The product ID from products table
+        variation: CreativeVariation parameters (defaults to elegant studio)
+        use_two_stage: Use two-stage pipeline (default True)
+        duration_seconds: Video duration (4, 6, or 8 seconds)
+        tool_context: Optional ADK ToolContext for artifact storage
+
+    Returns:
+        Dictionary with video details and status='generated'
+    """
+    print(f"[DEBUG generate_video_from_product] Starting for campaign_id={campaign_id}, product_id={product_id}")
+
+    # Ensure generated directory exists (only in local mode)
+    if storage.get_storage_mode() == "local":
+        os.makedirs(GENERATED_DIR, exist_ok=True)
+
+    # Get campaign
+    with get_db_cursor() as cursor:
+        cursor.execute('SELECT * FROM campaigns WHERE id = ?', (campaign_id,))
+        campaign = cursor.fetchone()
+        if not campaign:
+            return {"status": "error", "message": f"Campaign {campaign_id} not found"}
+
+    # Get product from products table
+    product = get_product(product_id)
+    if not product:
+        return {"status": "error", "message": f"Product {product_id} not found"}
+
+    print(f"[DEBUG generate_video_from_product] Product: {product['name']}")
+    print(f"[DEBUG generate_video_from_product] Campaign: {campaign['name']}")
+
+    # Use default variation if none provided
+    if variation is None:
+        variation = get_default_variation()
+
+    print(f"[DEBUG generate_video_from_product] Variation: {variation.name}")
+
+    # Check if product is linked to campaign
+    with get_db_cursor() as cursor:
+        cursor.execute('''
+            SELECT id FROM campaign_products
+            WHERE campaign_id = ? AND product_id = ?
+        ''', (campaign_id, product_id))
+        if not cursor.fetchone():
+            # Auto-link product to campaign
+            cursor.execute('''
+                INSERT INTO campaign_products (campaign_id, product_id)
+                VALUES (?, ?)
+            ''', (campaign_id, product_id))
+            print(f"[DEBUG generate_video_from_product] Linked product to campaign")
+
+    # Get product image bytes using storage abstraction
+    product_image_filename = product.get('image_filename')
+    product_image_bytes = None
+    if product_image_filename:
+        try:
+            if storage.product_image_exists(product_image_filename):
+                product_image_bytes = storage.read_product_image(product_image_filename)
+                image_path = storage.get_product_image_path(product_image_filename)
+                print(f"[DEBUG generate_video_from_product] Loaded product image from: {image_path}")
+            else:
+                print(f"[DEBUG generate_video_from_product] Product image not found: {product_image_filename}")
+        except Exception as e:
+            print(f"[DEBUG generate_video_from_product] Could not load product image: {e}")
+
+    # Generate video filename
+    video_filename = generate_video_filename(product['name'], variation.name)
+    thumbnail_filename = video_filename.replace('.mp4', '-thumbnail.png')
+
+    try:
+        start_time = time.time()
+
+        if use_two_stage:
+            # Stage 1: Generate scene image
+            print(f"[DEBUG generate_video_from_product] Stage 1: Generating scene image...")
+            scene_image_bytes, scene_prompt = await generate_scene_image(
+                product=product,
+                variation=variation,
+                product_image_bytes=product_image_bytes
+            )
+
+            # Save scene image as thumbnail
+            if storage.get_storage_mode() == "gcs":
+                thumbnail_path = storage.save_video(thumbnail_filename, scene_image_bytes)
+            else:
+                thumbnail_path = os.path.join(GENERATED_DIR, thumbnail_filename)
+                with open(thumbnail_path, 'wb') as f:
+                    f.write(scene_image_bytes)
+            print(f"[DEBUG generate_video_from_product] Saved thumbnail: {thumbnail_path}")
+
+            # Stage 2: Animate scene with Veo
+            print(f"[DEBUG generate_video_from_product] Stage 2: Animating with Veo 3.1...")
+            video_bytes, video_prompt = await animate_scene_with_veo(
+                scene_image_bytes=scene_image_bytes,
+                product=product,
+                variation=variation,
+                duration_seconds=duration_seconds
+            )
+        else:
+            # Single-stage: Direct video generation (fallback)
+            print(f"[DEBUG generate_video_from_product] Single-stage video generation...")
+            scene_prompt = ""
+            video_prompt = build_creative_prompt(product, variation)
+
+            # Load product image for direct Veo generation
+            if not product_image_bytes:
+                return {"status": "error", "message": "Product image required for single-stage generation"}
+
+            image = types.Image(image_bytes=product_image_bytes, mime_type="image/png")
+
+            client = genai.Client()
+            operation = client.models.generate_videos(
+                model="veo-3.1-generate-preview",
+                prompt=video_prompt,
+                image=image,
+                config=types.GenerateVideosConfig(
+                    number_of_videos=1,
+                    duration_seconds=duration_seconds,
+                ),
+            )
+
+            # Poll for completion
+            max_wait_time = 600
+            poll_interval = 20
+            waited = 0
+            while not operation.done:
+                if waited >= max_wait_time:
+                    raise TimeoutError("Video generation timed out")
+                time.sleep(poll_interval)
+                waited += poll_interval
+                operation = client.operations.get(operation)
+
+            if operation.result is None or not operation.result.generated_videos:
+                raise ValueError("No video generated")
+
+            generated_video = operation.result.generated_videos[0]
+            is_vertex_ai = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true"
+
+            if is_vertex_ai:
+                video_bytes = generated_video.video.video_bytes
+            else:
+                client.files.download(file=generated_video.video)
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                    temp_path = tmp.name
+                generated_video.video.save(temp_path)
+                with open(temp_path, "rb") as f:
+                    video_bytes = f.read()
+                os.unlink(temp_path)
+
+            thumbnail_path = None
+            thumbnail_filename = None
+
+        generation_time = int(time.time() - start_time)
+        print(f"[DEBUG generate_video_from_product] Total generation time: {generation_time}s")
+
+        # Save video
+        if storage.get_storage_mode() == "gcs":
+            video_path = storage.save_video(video_filename, video_bytes)
+        else:
+            video_path = os.path.join(GENERATED_DIR, video_filename)
+            with open(video_path, 'wb') as f:
+                f.write(video_bytes)
+        print(f"[DEBUG generate_video_from_product] Saved video: {video_path}")
+
+        # Save metadata file
+        save_video_metadata(
+            video_filename=video_filename,
+            product=product,
+            variation=variation,
+            scene_prompt=scene_prompt,
+            video_prompt=video_prompt,
+            pipeline_type="two-stage" if use_two_stage else "single-stage"
+        )
+
+        # Save as ADK artifact if tool_context provided
+        if tool_context:
+            video_artifact = types.Part.from_bytes(data=video_bytes, mime_type="video/mp4")
+            version = await tool_context.save_artifact(filename=video_filename, artifact=video_artifact)
+            print(f"[DEBUG generate_video_from_product] Saved artifact version: {version}")
+
+        # Insert into campaign_videos table with status='generated'
+        # NOTE: NO metrics are created - metrics only on activation
+        with get_db_cursor() as cursor:
+            cursor.execute('''
+                INSERT INTO campaign_videos (
+                    campaign_id, product_id, video_filename, local_path, thumbnail_path,
+                    scene_prompt, video_prompt, pipeline_type, variation_name, variation_params,
+                    duration_seconds, aspect_ratio, status, generation_time_seconds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'generated', ?)
+            ''', (
+                campaign_id,
+                product_id,
+                video_filename,
+                video_path,
+                thumbnail_path,
+                scene_prompt,
+                video_prompt,
+                "two-stage" if use_two_stage else "single-stage",
+                variation.name,
+                json.dumps(variation.to_dict()),
+                duration_seconds,
+                "9:16",
+                generation_time
+            ))
+            video_id = cursor.lastrowid
+
+        return {
+            "status": "success",
+            "message": f"Video generated successfully. Use activate_video to push live.",
+            "video": {
+                "id": video_id,
+                "campaign_id": campaign_id,
+                "campaign_name": campaign["name"],
+                "product_id": product_id,
+                "product_name": product["name"],
+                "video_filename": video_filename,
+                "video_path": video_path,
+                "thumbnail_path": thumbnail_path,
+                "variation": variation.name,
+                "pipeline": "two-stage" if use_two_stage else "single-stage",
+                "duration_seconds": duration_seconds,
+                "generation_time_seconds": generation_time,
+                "status": "generated",
+                "artifact_saved": tool_context is not None
+            },
+            "prompts": {
+                "scene_prompt": scene_prompt[:200] + "..." if len(scene_prompt) > 200 else scene_prompt,
+                "video_prompt": video_prompt[:200] + "..." if len(video_prompt) > 200 else video_prompt
+            },
+            "note": "Video is in 'generated' status. Metrics will only be created after activation."
+        }
+
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG generate_video_from_product] Error: {str(e)}")
+        print(f"[DEBUG generate_video_from_product] Traceback: {traceback.format_exc()}")
+        return {
+            "status": "error",
+            "message": f"Video generation failed: {str(e)}",
+            "product": product["name"],
+            "variation": variation.name
+        }
 
 
 def build_templated_prompt(
@@ -526,30 +1044,13 @@ async def generate_video_ad(
                 WHERE id = ?
             ''', (output_filename, video_properties.model_dump_json(), ad_id))
 
-        # Auto-generate mock metrics for the new ad (90 days of data)
-        # Uses in-store retail media metrics: impressions, dwell_time, circulation, revenue
-        print(f"[DEBUG generate_video_ad] Generating mock metrics for ad_id={ad_id}...")
-        mock_metrics = generate_mock_metrics(campaign_id, ad_id, days=90)
-        with get_db_cursor() as cursor:
-            for metric in mock_metrics:
-                cursor.execute('''
-                    INSERT INTO campaign_metrics
-                    (campaign_id, ad_id, date, impressions, dwell_time, circulation, revenue)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    metric["campaign_id"],
-                    metric["ad_id"],
-                    metric["date"],
-                    metric["impressions"],
-                    metric["dwell_time"],
-                    metric["circulation"],
-                    metric["revenue"]
-                ))
-        print(f"[DEBUG generate_video_ad] Inserted {len(mock_metrics)} metric records")
+        # NOTE: Auto-metrics generation REMOVED per HITL workflow
+        # Metrics are now only created when a video is activated via review_tools.activate_video()
+        print(f"[DEBUG generate_video_ad] Video saved. No auto-metrics (HITL workflow).")
 
         return {
             "status": "success",
-            "message": "Video ad generated successfully",
+            "message": "Video ad generated successfully. Use activate_video to push live and generate metrics.",
             "ad": {
                 "id": ad_id,
                 "campaign_id": campaign_id,
@@ -560,9 +1061,10 @@ async def generate_video_ad(
                 "duration_seconds": duration_seconds,
                 "source_image": image_row["image_path"],
                 "artifact_saved": tool_context is not None,
-                "metrics_generated": len(mock_metrics)
+                "status": "completed"
             },
-            "video_properties": video_properties.model_dump()
+            "video_properties": video_properties.model_dump(),
+            "note": "Metrics will only be generated after video activation (HITL workflow)."
         }
 
     except Exception as e:
@@ -1188,3 +1690,216 @@ async def get_video_properties(ad_id: int) -> dict:
             "video_properties": video_props,
             "has_properties": video_props is not None
         }
+
+
+# =============================================================================
+# Product and Video Listing Functions
+# =============================================================================
+
+def list_products(category: str = None) -> dict:
+    """List all available products for video generation.
+
+    Products are pre-loaded from the products table (22 products).
+
+    Args:
+        category: Optional category filter (dress, top, pants, outerwear, skirt)
+
+    Returns:
+        Dictionary with list of products
+    """
+    from ..database.db import list_products as db_list_products
+
+    products = db_list_products(category)
+
+    return {
+        "status": "success",
+        "product_count": len(products),
+        "products": [
+            {
+                "id": p["id"],
+                "name": p["name"],
+                "category": p["category"],
+                "style": p["style"],
+                "color": p["color"],
+                "fabric": p["fabric"],
+                "image_filename": p["image_filename"]
+            }
+            for p in products
+        ]
+    }
+
+
+def list_campaign_videos(campaign_id: int = None, status: str = None) -> dict:
+    """List videos from the campaign_videos table.
+
+    This is the new function for the HITL workflow that lists videos
+    with their status (generated, activated, paused, archived).
+
+    Args:
+        campaign_id: Optional campaign ID filter
+        status: Optional status filter (generated, activated, paused, archived)
+
+    Returns:
+        Dictionary with list of videos and their details
+    """
+    with get_db_cursor() as cursor:
+        # Build query based on filters
+        query = '''
+            SELECT cv.*, c.name as campaign_name, p.name as product_name
+            FROM campaign_videos cv
+            JOIN campaigns c ON cv.campaign_id = c.id
+            LEFT JOIN products p ON cv.product_id = p.id
+        '''
+        params = []
+        conditions = []
+
+        if campaign_id:
+            conditions.append("cv.campaign_id = ?")
+            params.append(campaign_id)
+        if status:
+            conditions.append("cv.status = ?")
+            params.append(status)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY cv.created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        videos = []
+        for row in rows:
+            variation_params = None
+            if row["variation_params"]:
+                try:
+                    variation_params = json.loads(row["variation_params"])
+                except json.JSONDecodeError:
+                    pass
+
+            videos.append({
+                "id": row["id"],
+                "campaign_id": row["campaign_id"],
+                "campaign_name": row["campaign_name"],
+                "product_id": row["product_id"],
+                "product_name": row["product_name"],
+                "video_filename": row["video_filename"],
+                "thumbnail_path": row["thumbnail_path"],
+                "variation_name": row["variation_name"],
+                "variation_params": variation_params,
+                "pipeline_type": row["pipeline_type"],
+                "duration_seconds": row["duration_seconds"],
+                "status": row["status"],
+                "activated_at": row["activated_at"],
+                "created_at": row["created_at"],
+                "generation_time_seconds": row["generation_time_seconds"]
+            })
+
+        return {
+            "status": "success",
+            "video_count": len(videos),
+            "videos": videos
+        }
+
+
+async def generate_video_with_variation(
+    campaign_id: int,
+    product_id: int,
+    variation_name: str = None,
+    model_ethnicity: str = "diverse",
+    setting: str = "studio",
+    mood: str = "elegant",
+    lighting: str = "natural",
+    activity: str = "walking",
+    camera_movement: str = "orbit",
+    time_of_day: str = "day",
+    visual_style: str = "cinematic",
+    energy: str = "moderate",
+    duration_seconds: int = 8,
+    use_two_stage: bool = True,
+    tool_context: ToolContext = None
+) -> dict:
+    """Generate a video with variation parameters as individual arguments.
+
+    This is a convenience wrapper around generate_video_from_product that
+    accepts variation parameters as individual arguments for easier agent usage.
+
+    Args:
+        campaign_id: The campaign to generate for
+        product_id: The product ID from products table
+        variation_name: Name for this variation (auto-generated if not provided)
+        model_ethnicity: Model ethnicity (asian, european, african, latina, south-asian, diverse)
+        setting: Setting (studio, beach, urban, cafe, rooftop, garden, nature, etc.)
+        mood: Mood (elegant, romantic, bold, playful, sophisticated, etc.)
+        lighting: Lighting (natural, studio, dramatic, soft, golden, neon, moody)
+        activity: Activity (walking, standing, sitting, dancing, spinning, posing)
+        camera_movement: Camera movement (orbit, pan, dolly, static, tracking, crane)
+        time_of_day: Time of day (golden-hour, sunrise, day, sunset, dusk, night)
+        visual_style: Visual style (cinematic, editorial, commercial, artistic)
+        energy: Energy level (calm, moderate, dynamic, high-energy)
+        duration_seconds: Video duration (4, 6, or 8 seconds)
+        use_two_stage: Use two-stage pipeline (default True)
+        tool_context: Optional ADK ToolContext for artifact storage
+
+    Returns:
+        Dictionary with video details
+    """
+    # Generate variation name if not provided
+    if not variation_name:
+        variation_name = f"{model_ethnicity}-{setting}-{mood}"
+
+    # Create CreativeVariation from parameters
+    variation = CreativeVariation(
+        name=variation_name,
+        model_ethnicity=model_ethnicity,
+        setting=setting,
+        mood=mood,
+        lighting=lighting,
+        activity=activity,
+        camera_movement=camera_movement,
+        time_of_day=time_of_day,
+        visual_style=visual_style,
+        energy=energy
+    )
+
+    # Call the main function
+    return await generate_video_from_product(
+        campaign_id=campaign_id,
+        product_id=product_id,
+        variation=variation,
+        use_two_stage=use_two_stage,
+        duration_seconds=duration_seconds,
+        tool_context=tool_context
+    )
+
+
+def get_variation_presets() -> dict:
+    """Get available preset variations for video generation.
+
+    Returns predefined variation sets for:
+    - diversity: Different model ethnicities
+    - settings: Different locations/environments
+    - moods: Different emotional tones
+
+    Returns:
+        Dictionary with preset variations
+    """
+    presets = {}
+    for preset_name, variations in PRESET_VARIATIONS.items():
+        presets[preset_name] = [
+            {
+                "name": v.name,
+                "model_ethnicity": v.model_ethnicity,
+                "setting": v.setting,
+                "mood": v.mood,
+                "lighting": v.lighting,
+                "activity": v.activity
+            }
+            for v in variations
+        ]
+
+    return {
+        "status": "success",
+        "preset_count": len(presets),
+        "presets": presets
+    }

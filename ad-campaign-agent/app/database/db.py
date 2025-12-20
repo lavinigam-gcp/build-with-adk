@@ -46,29 +46,112 @@ def init_database() -> None:
 
     Creates tables for:
     - campaigns: Campaign metadata and location targeting
-    - campaign_images: Seed images associated with campaigns
-    - campaign_ads: Generated video ads
-    - campaign_metrics: Daily performance metrics (mock data)
+    - products: Product catalog (22 pre-generated products)
+    - campaign_products: Junction table for campaign-product relationships
+    - campaign_images: Seed images associated with campaigns (legacy)
+    - campaign_videos: Generated video ads with HITL status
+    - campaign_ads: Generated video ads (legacy alias)
+    - video_metrics: Daily performance metrics (only for activated videos)
+    - campaign_metrics: Daily performance metrics (legacy alias)
     """
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Create campaigns table
+    # Create campaigns table (product-centric: 1 campaign = 1 product + 1 store location)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS campaigns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             description TEXT,
-            category TEXT CHECK(category IN ('summer', 'formal', 'professional', 'essentials')),
+            product_id INTEGER,
+            store_name TEXT,
             city TEXT NOT NULL,
             state TEXT NOT NULL,
+            category TEXT CHECK(category IN ('summer', 'formal', 'professional', 'essentials', 'holiday')),
             status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'active', 'paused', 'completed')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
         )
     ''')
 
-    # Create campaign_images table
+    # Create products table (source of truth - 22 products)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            category TEXT,
+            style TEXT,
+            color TEXT,
+            fabric TEXT,
+            details TEXT,
+            occasion TEXT,
+            image_filename TEXT NOT NULL,
+            gcs_path TEXT,
+            local_path TEXT,
+            metadata TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Create campaign_products junction table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS campaign_products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+            UNIQUE(campaign_id, product_id)
+        )
+    ''')
+
+    # Create campaign_videos table (new video schema with HITL)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS campaign_videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            product_id INTEGER,
+            video_filename TEXT NOT NULL UNIQUE,
+            gcs_path TEXT,
+            local_path TEXT,
+            thumbnail_path TEXT,
+            scene_prompt TEXT,
+            video_prompt TEXT,
+            pipeline_type TEXT DEFAULT 'two-stage',
+            variation_name TEXT,
+            variation_params TEXT,
+            duration_seconds INTEGER DEFAULT 8,
+            aspect_ratio TEXT DEFAULT '9:16',
+            status TEXT DEFAULT 'generated' CHECK(status IN ('generating', 'generated', 'activated', 'paused', 'archived')),
+            activated_at TIMESTAMP,
+            activated_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            generation_time_seconds INTEGER,
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+        )
+    ''')
+
+    # Create video_metrics table (only for activated videos)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS video_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_id INTEGER NOT NULL,
+            metric_date DATE NOT NULL,
+            impressions INTEGER DEFAULT 0,
+            dwell_time_seconds REAL DEFAULT 0.0,
+            circulation INTEGER DEFAULT 0,
+            revenue REAL DEFAULT 0.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (video_id) REFERENCES campaign_videos(id) ON DELETE CASCADE,
+            UNIQUE(video_id, metric_date)
+        )
+    ''')
+
+    # Legacy tables for backward compatibility
+    # Create campaign_images table (legacy)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS campaign_images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,7 +164,7 @@ def init_database() -> None:
         )
     ''')
 
-    # Create campaign_ads table
+    # Create campaign_ads table (legacy)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS campaign_ads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,9 +181,7 @@ def init_database() -> None:
         )
     ''')
 
-    # Create campaign_metrics table (In-Store Retail Media metrics)
-    # Metrics: impressions, dwell_time, circulation, revenue
-    # RPI (revenue_per_impression) is computed on-the-fly as revenue/impressions
+    # Create campaign_metrics table (legacy - In-Store Retail Media metrics)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS campaign_metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,8 +197,18 @@ def init_database() -> None:
         )
     ''')
 
-    # Create indexes for faster queries
+    # Create base indexes (columns that always exist)
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_products_campaign ON campaign_products(campaign_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_products_product ON campaign_products(product_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_videos_campaign ON campaign_videos(campaign_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_videos_product ON campaign_videos(product_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_videos_status ON campaign_videos(status)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_video_metrics_video ON video_metrics(video_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_video_metrics_date ON video_metrics(metric_date)')
+    # Legacy indexes
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_images_campaign ON campaign_images(campaign_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_ads_campaign ON campaign_ads(campaign_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaign_metrics_campaign ON campaign_metrics(campaign_id)')
@@ -126,8 +217,35 @@ def init_database() -> None:
     conn.commit()
     conn.close()
 
-    # Run migrations for existing databases
+    # Run migrations for existing databases (adds new columns)
     run_migrations()
+
+    # Create indexes for columns added by migrations
+    create_migration_indexes()
+
+    # Populate products table
+    populate_products()
+
+
+def create_migration_indexes() -> None:
+    """Create indexes for columns added by migrations.
+
+    This runs after migrations to ensure columns exist before indexing.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Check if product_id column exists before creating index
+    cursor.execute("PRAGMA table_info(campaigns)")
+    campaign_columns = [column[1] for column in cursor.fetchall()]
+
+    if "product_id" in campaign_columns:
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaigns_product ON campaigns(product_id)')
+    if "store_name" in campaign_columns:
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_campaigns_store ON campaigns(store_name)')
+
+    conn.commit()
+    conn.close()
 
 
 def run_migrations() -> None:
@@ -148,6 +266,22 @@ def run_migrations() -> None:
         cursor.execute("ALTER TABLE campaign_ads ADD COLUMN video_properties TEXT")
         conn.commit()
         print("[DB Migration] video_properties column added successfully.")
+
+    # Migration 2: Add product_id and store_name to campaigns (product-centric model)
+    cursor.execute("PRAGMA table_info(campaigns)")
+    campaign_columns = [column[1] for column in cursor.fetchall()]
+
+    if "product_id" not in campaign_columns:
+        print("[DB Migration] Adding product_id column to campaigns...")
+        cursor.execute("ALTER TABLE campaigns ADD COLUMN product_id INTEGER REFERENCES products(id)")
+        conn.commit()
+        print("[DB Migration] product_id column added successfully.")
+
+    if "store_name" not in campaign_columns:
+        print("[DB Migration] Adding store_name column to campaigns...")
+        cursor.execute("ALTER TABLE campaigns ADD COLUMN store_name TEXT")
+        conn.commit()
+        print("[DB Migration] store_name column added successfully.")
 
     # Migration 2: Check if campaign_metrics needs retail media migration
     # This checks if old columns exist - if so, run migrate_metrics_schema.py
@@ -177,6 +311,13 @@ def reset_database() -> None:
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Drop new tables
+    cursor.execute('DROP TABLE IF EXISTS video_metrics')
+    cursor.execute('DROP TABLE IF EXISTS campaign_videos')
+    cursor.execute('DROP TABLE IF EXISTS campaign_products')
+    cursor.execute('DROP TABLE IF EXISTS products')
+
+    # Drop legacy tables
     cursor.execute('DROP TABLE IF EXISTS campaign_metrics')
     cursor.execute('DROP TABLE IF EXISTS campaign_ads')
     cursor.execute('DROP TABLE IF EXISTS campaign_images')
@@ -186,3 +327,109 @@ def reset_database() -> None:
     conn.close()
 
     init_database()
+
+
+def populate_products() -> None:
+    """Populate the products table with 22 pre-generated products.
+
+    Products are loaded from products_data.py which contains metadata
+    parsed from scripts/products/*.txt files.
+    """
+    from .products_data import PRODUCTS
+    import json
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Check if products already exist
+    cursor.execute('SELECT COUNT(*) FROM products')
+    count = cursor.fetchone()[0]
+    if count > 0:
+        conn.close()
+        return  # Products already populated
+
+    for product in PRODUCTS:
+        cursor.execute('''
+            INSERT OR IGNORE INTO products
+            (name, category, style, color, fabric, details, occasion,
+             image_filename, local_path, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            product.get('name'),
+            product.get('category'),
+            product.get('style'),
+            product.get('color'),
+            product.get('fabric'),
+            product.get('details'),
+            product.get('occasion'),
+            product.get('image_filename'),
+            product.get('local_path'),
+            json.dumps(product)
+        ))
+
+    conn.commit()
+    conn.close()
+    print(f"[DB] Populated {len(PRODUCTS)} products")
+
+
+def get_product(product_id: int) -> dict:
+    """Get a product by ID.
+
+    Args:
+        product_id: The product ID
+
+    Returns:
+        Product dictionary or None if not found
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM products WHERE id = ?', (product_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return dict(row)
+    return None
+
+
+def get_product_by_name(name: str) -> dict:
+    """Get a product by name.
+
+    Args:
+        name: The product name (e.g., 'emerald-satin-slip-dress')
+
+    Returns:
+        Product dictionary or None if not found
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM products WHERE name = ?', (name,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return dict(row)
+    return None
+
+
+def list_products(category: str = None) -> list:
+    """List all products, optionally filtered by category.
+
+    Args:
+        category: Optional category filter
+
+    Returns:
+        List of product dictionaries
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if category:
+        cursor.execute('SELECT * FROM products WHERE category = ? ORDER BY name', (category,))
+    else:
+        cursor.execute('SELECT * FROM products ORDER BY name')
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]

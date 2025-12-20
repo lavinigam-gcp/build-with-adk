@@ -25,7 +25,7 @@ from .image_tools import (
     analyze_image,
     list_campaign_images,
     list_available_images,
-    generate_seed_image,
+    # generate_seed_image removed - retailers provide product images
 )
 from .video_tools import (
     generate_video_ad,
@@ -56,7 +56,7 @@ __all__ = [
     "analyze_image",
     "list_campaign_images",
     "list_available_images",
-    "generate_seed_image",
+    # "generate_seed_image" removed
     # Video generation
     "generate_video_ad",
     "generate_video_variation",

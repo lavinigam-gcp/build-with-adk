@@ -17,9 +17,9 @@
 import os
 
 # Model configuration
-MODEL = "gemini-3-pro-preview"  # Main agent model (gemini-2.5-flash, gemini-3-pro-preview, gemini-2.5-pro)
-VIDEO_ANALYSIS_MODEL = "gemini-2.5-pro"  # For video analysis (supports video input)
-
+MODEL = "gemini-3-flash-preview"  # Main agent model (gemini-2.5-flash, gemini-3-pro-preview, gemini-2.5-pro, gemini-3-flash-preview)
+VIDEO_ANALYSIS_MODEL = "gemini-3-flash-preview"  # For video analysis (supports video input)
+IMAGE_GENERATION = "gemini-3-pro-image-preview"
 # API Keys (loaded from environment)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 # Support both GOOGLE_MAPS_API_KEY and MAPS_API_KEY (from .env)
@@ -34,7 +34,8 @@ DEFAULT_GCS_BUCKET = "kaggle-on-gcp-ad-campaign-assets"
 GCS_BUCKET = os.environ.get("GCS_BUCKET", DEFAULT_GCS_BUCKET)
 
 # GCS paths for assets
-GCS_SEED_IMAGES_PREFIX = "seed-images/"
+GCS_PRODUCT_IMAGES_PREFIX = "product-images/"  # Renamed from seed-images per feedback
+GCS_SEED_IMAGES_PREFIX = "seed-images/"  # Legacy, deprecated
 GCS_GENERATED_PREFIX = "generated/"
 
 # Paths (kept for backwards compatibility, but GCS is primary storage)

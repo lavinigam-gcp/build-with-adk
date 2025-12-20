@@ -169,6 +169,63 @@ def get_image_path(filename: str) -> str:
 
 
 # =============================================================================
+# Product Image Storage Functions (GCS only - no local fallback)
+# =============================================================================
+
+def product_image_exists(filename: str) -> bool:
+    """Check if a product image exists in GCS.
+
+    Product images are ALWAYS stored in GCS 'product-images/' folder.
+    No local fallback - GCS is the source of truth.
+
+    Args:
+        filename: Image filename (without path).
+
+    Returns:
+        True if the image exists, False otherwise.
+    """
+    bucket = _get_bucket()
+    if bucket is None:
+        raise RuntimeError("GCS_BUCKET not configured. Product images require GCS.")
+    blob = bucket.blob(f"product-images/{filename}")
+    return blob.exists()
+
+
+def read_product_image(filename: str) -> bytes:
+    """Read product image bytes from GCS.
+
+    Product images are ALWAYS stored in GCS 'product-images/' folder.
+    No local fallback - GCS is the source of truth.
+
+    Args:
+        filename: Image filename (without path).
+
+    Returns:
+        Image data as bytes.
+    """
+    bucket = _get_bucket()
+    if bucket is None:
+        raise RuntimeError("GCS_BUCKET not configured. Product images require GCS.")
+    blob = bucket.blob(f"product-images/{filename}")
+    return blob.download_as_bytes()
+
+
+def get_product_image_path(filename: str) -> str:
+    """Get the GCS URL for a product image.
+
+    Args:
+        filename: Image filename (without path).
+
+    Returns:
+        gs:// URL for the product image.
+    """
+    from .config import GCS_BUCKET
+    if not GCS_BUCKET:
+        raise RuntimeError("GCS_BUCKET not configured. Product images require GCS.")
+    return f"gs://{GCS_BUCKET}/product-images/{filename}"
+
+
+# =============================================================================
 # Video Storage Functions
 # =============================================================================
 
