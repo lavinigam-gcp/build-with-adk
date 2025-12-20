@@ -18,19 +18,35 @@ This demo is deployed to **Google Cloud Run** with the following architecture:
 
 | Purpose | Model | Notes |
 |---------|-------|-------|
-| Main Agent | `gemini-3-pro-preview` | Coordinator and all sub-agents |
-| Video Generation | `veo-3.1-generate-preview` | 4, 6, or 8 second fashion videos |
-| Image Generation | `gemini-3-pro-image-preview` | AI-generated seed images |
-| Image Analysis | `gemini-2.0-flash` | Metadata extraction |
-| Video Analysis | `gemini-2.5-pro` | Video property extraction |
+| Main Agent | `gemini-3-flash-preview` | Coordinator and all sub-agents |
+| Scene Image Generation | `gemini-3-pro-image-preview` | Stage 1: Model wearing product |
+| Video Animation | `veo-3.1-generate-preview` | Stage 2: 8-second fashion videos |
+| Chart Visualizations | `gemini-3-pro-image-preview` | Metrics charts with anti-hallucination templates |
+| Map Visualizations | `gemini-3-pro-image-preview` | AI-generated map infographics |
+| Video Analysis | `gemini-3-flash-preview` | Video property extraction |
+
+### Two-Stage Video Generation Pipeline (NEW)
+
+```
+Stage 1: Scene Image (Gemini 3 Pro Image)
+    Input: Product image + CreativeVariation parameters
+    Output: Scene-ready first frame (model wearing product)
+    Saved as: thumbnail
+
+Stage 2: Video Animation (Veo 3.1)
+    Input: Scene image + Animation prompt
+    Output: 8-second 9:16 video
+    Saved as: final video
+```
 
 ### Multi-Agent Architecture
 
 ```
 Coordinator Agent (root_agent)
-├── Campaign Agent    → Campaign CRUD, locations, maps, demographics
-├── Media Agent       → Images, videos, Veo 3.1, video properties
-└── Analytics Agent   → Metrics, insights, charts, map visualizations
+├── Campaign Agent    → Campaign CRUD, locations, demographics
+├── Media Agent       → Products, videos, two-stage pipeline, variations
+├── Review Agent      → HITL activation, video status, metrics generation (NEW)
+└── Analytics Agent   → Metrics, insights, charts, Google Maps integration
 ```
 
 ### Viewing Generated Artifacts
@@ -52,51 +68,64 @@ All generated media is saved as ADK artifacts, viewable in the Web UI:
 
 Before running demos, note the pre-loaded data. Mock data auto-populates on each container start.
 
-### Campaigns
+### Product-Centric Model (KEY CONCEPT)
 
-| ID | Campaign Name | Location | Category | Status | Images | Ads |
-|----|---------------|----------|----------|--------|--------|-----|
-| 1 | Summer Blooms 2025 | Los Angeles, CA | Summer | Active | 1 | 1 |
-| 2 | Evening Elegance Collection | New York, NY | Formal | Active | 2 | 2 |
-| 3 | Urban Professional | Chicago, IL | Professional | Active | 3 | 3 |
-| 4 | Fall Essentials | Seattle, WA | Essentials | Draft | 1 | 0 |
+Each campaign = **1 product + 1 store location**. This enables:
+- Clear metrics attribution per product per store
+- A/B testing with video variations for the same product
+- Same product at different stores = different campaigns
 
-### Pre-loaded Video Ads (Active Campaigns Only)
+### Products (22 Pre-loaded)
 
-Each active campaign has video ads with extracted properties:
+Browse with `list_products()` or `list_products(category="dress")`:
 
-| Ad ID | Campaign | Source Image | Mood | Energy | Setting | Colors |
-|-------|----------|--------------|------|--------|---------|--------|
-| 1 | Summer Blooms 2025 | `dress_summer_dress_004.jpg` | romantic | moderate | outdoor | pink, white |
-| 2 | Evening Elegance | `dress_formal_dress_002.jpg` | sophisticated | moderate | studio | red |
-| 3 | Evening Elegance | `dress_formal_dress_003.jpg` | bold | dynamic | urban | olive, green |
-| 4 | Urban Professional | `top_blouse_002.jpg` | sophisticated | dynamic | urban | white |
-| 5 | Urban Professional | `top_blouse_003.jpg` | playful | dynamic | urban | blue |
-| 6 | Urban Professional | `top_blouse_004.jpg` | elegant | moderate | studio | beige |
+| Category | Count | Example Products |
+|----------|-------|------------------|
+| Dress | 8 | blue-floral-maxi-dress, elegant-black-cocktail-dress, emerald-satin-slip-dress |
+| Top | 6 | classic-white-blouse, silk-camisole, fitted-blazer |
+| Pants | 4 | black-high-waist-trousers, wide-leg-linen-pants |
+| Outerwear | 2 | wool-peacoat, leather-jacket |
+| Skirt | 2 | pleated-midi-skirt, denim-mini-skirt |
 
-### Seed Images by Campaign
+### Campaigns (Product-Centric)
 
-| Filename | Campaign | Garment Type | Key Feature |
-|----------|----------|--------------|-------------|
-| `dress_summer_dress_004.jpg` | Summer Blooms (1) | Summer dress | Floral wrap in pink/white |
-| `dress_formal_dress_002.jpg` | Evening Elegance (2) | Formal gown | Red floral fitted gown |
-| `dress_formal_dress_003.jpg` | Evening Elegance (2) | Bandage dress | Olive green strapless |
-| `top_blouse_002.jpg` | Urban Professional (3) | Classic blouse | White button-down |
-| `top_blouse_003.jpg` | Urban Professional (3) | Fitted blouse | Light blue cinched waist |
-| `top_blouse_004.jpg` | Urban Professional (3) | Oversized blazer | Beige neutral tone |
-| `top_sweater_003.jpg` | Fall Essentials (4) | Turtleneck sweater | Beige ribbed texture |
+| ID | Campaign Name | Store | City | Product | Status |
+|----|---------------|-------|------|---------|--------|
+| 1 | Blue Floral Maxi Dress - Westfield Century City | Westfield Century City | Los Angeles, CA | blue-floral-maxi-dress | Active |
+| 2 | Elegant Black Cocktail Dress - Bloomingdale's 59th Street | Bloomingdale's 59th Street | New York, NY | elegant-black-cocktail-dress | Active |
+| 3 | Black High Waist Trousers - Water Tower Place | Water Tower Place | Chicago, IL | black-high-waist-trousers | Active |
+| 4 | Emerald Satin Slip Dress - The Grove | The Grove | Los Angeles, CA | emerald-satin-slip-dress | Active |
 
-### Metrics Data
+### HITL Video Workflow (NEW)
 
-Each ad has **90 days** of in-store retail media metrics:
+Videos have a lifecycle status:
 
-| Metric | Description | Typical Range |
-|--------|-------------|---------------|
-| `impressions` | Ad displays on in-store screens | 15,000-35,000/day |
-| `dwell_time` | Avg seconds viewing | 3-8 seconds |
-| `circulation` | Foot traffic past display | 30,000-100,000/day |
-| `revenue` | Revenue for RPI calculation | $300-$2,800/day |
-| `RPI` | Revenue Per Impression (computed) | $0.02-$0.08 |
+| Status | Description | Metrics? |
+|--------|-------------|----------|
+| `generated` | Video created, pending review | NO |
+| `activated` | Pushed live by Review Agent | YES (30 days generated) |
+| `paused` | Temporarily stopped | Preserved |
+| `archived` | Rejected/removed | N/A |
+
+**Important:** Videos do NOT have metrics until activated via Review Agent!
+
+### Metrics Data (NEW Schema)
+
+Metrics are stored in `video_metrics` table and linked to `campaign_videos`.
+**Metrics only exist for ACTIVATED videos** (30 days generated on activation).
+
+| Metric | DB Column | Description | Typical Range |
+|--------|-----------|-------------|---------------|
+| `impressions` | `impressions` | Ad displays on in-store screens | 800-2,000/day |
+| `dwell_time` | `dwell_time_seconds` | Avg seconds viewing | 3-8 seconds |
+| `circulation` | `circulation` | Foot traffic past display | 1,500-4,000/day |
+| `revenue` | `revenue` | Revenue for RPI calculation | $30-$120/day |
+| `RPI` | (computed) | Revenue Per Impression | $0.02-$0.08 |
+
+**Key Tables (NEW Schema):**
+- `campaign_videos` - Videos with HITL lifecycle status
+- `video_metrics` - Daily metrics per activated video
+- `products` - 22 pre-loaded fashion products
 
 **Performance multipliers by location:**
 - Los Angeles (Campaign 1): 1.2x (flagship store)
@@ -164,113 +193,128 @@ Query: "Why is Summer Blooms 2025 doing so well? Give me the key insights."
 
 ---
 
-## Journey 2: New Campaign Creation to Video Ad (End-to-End - 6 steps)
+## Journey 2: Two-Stage Video Generation with HITL (End-to-End - 8 steps)
 
 **Persona:** Campaign Manager launching a new campaign
-**Duration:** ~10 minutes (includes video generation wait)
-**Agents Used:** Campaign Agent, Media Agent
+**Duration:** ~12 minutes (includes video generation wait)
+**Agents Used:** Campaign Agent, Media Agent, Review Agent
 
-### Step 1: Create new campaign
+### Step 1: Browse available products
 ```
-Query: "I want to create a new campaign called 'Holiday Sparkle' for our Miami stores.
-It's for our holiday party dress collection."
+Query: "Show me available products for a holiday campaign"
 ```
-**Agent:** Campaign Agent → `create_campaign(name, city, state, category)`
-
-**Expected Response:**
-- New campaign created with ID (likely 5)
-- Confirmation: name, category (formal), location (Miami, FL), status (draft)
-
-### Step 2: Browse available images
-```
-Query: "What seed images do we have available for this campaign?"
-```
-**Agent:** Media Agent → `list_available_images()`
-**Storage:** Reads from GCS `gs://kaggle-on-gcp-ad-campaign-assets/seed-images/`
+**Agent:** Media Agent → `list_products(category="dress")`
 
 **Expected Response:**
-- List of 7+ available images in seed-images/ folder
-- Each with filename and brief description
-- Suggestions for formal/party wear images
+- List of 22 products across categories
+- Each with: id, name, category, color, style, fabric
+- Filter by category available
 
-### Step 3: Add a seed image
+### Step 2: Create product-centric campaign
 ```
-Query: "Add the formal red dress image to my Holiday Sparkle campaign"
+Query: "Create a campaign for the elegant black cocktail dress at our Miami store"
 ```
-**Agent:** Media Agent → `add_seed_image(campaign_id, "dress_formal_dress_002.jpg")`
-**Model:** gemini-2.0-flash (auto-analyzes image)
-
-**Expected Response:**
-- Image added: dress_formal_dress_002.jpg
-- Image analyzed automatically
-- Metadata extracted: garment type, colors, mood, setting
-
-### Step 4: Review image analysis
-```
-Query: "Tell me more about this image - what did the AI detect?"
-```
-**Agent:** Media Agent → `list_campaign_images(campaign_id)`
+**Agent:** Campaign Agent → `create_campaign(product_id=2, store_name="Aventura Mall", city="Miami", state="Florida")`
 
 **Expected Response:**
-- Detailed metadata breakdown:
-  - Model description
-  - Clothing description (red floral fitted gown)
-  - Setting description
-  - Mood (elegant, sophisticated)
-  - Key features
-  - Suggested video prompt elements
+- New campaign created with auto-generated name: "Elegant Black Cocktail Dress - Aventura Mall"
+- Product linked to campaign
+- Status: draft
 
-### Step 5: Generate video ad ⭐ VEO 3.1 VIDEO GENERATION
+### Step 3: View variation presets
 ```
-Query: "Generate a video ad for this campaign using this image. Make it 6 seconds."
+Query: "What variation options do I have for video generation?"
 ```
-**Agent:** Media Agent → `generate_video_ad(campaign_id, duration_seconds=6)`
-**Model:** veo-3.1-generate-preview (2-5 min generation)
-**Storage:** Saves to GCS `gs://kaggle-on-gcp-ad-campaign-assets/generated/`
+**Agent:** Media Agent → `get_variation_presets()`
+
+**Expected Response:**
+- Preset variation sets:
+  - **diversity**: Different model ethnicities (asian, european, african, latina, south-asian)
+  - **settings**: Different locations (studio, beach, urban, cafe, rooftop, garden)
+  - **moods**: Different tones (elegant, romantic, bold, playful, sophisticated)
+
+### Step 4: Generate video with creative variation ⭐ TWO-STAGE PIPELINE
+```
+Query: "Generate a video for this campaign with an Asian model on a beach at golden hour"
+```
+**Agent:** Media Agent → `generate_video_with_variation(campaign_id, product_id, model_ethnicity="asian", setting="beach", time_of_day="golden-hour")`
+**Stage 1:** gemini-3-pro-image-preview (scene image with model wearing product)
+**Stage 2:** veo-3.1-generate-preview (8-second animation)
 
 **Sample Response:**
 ```json
 {
   "status": "success",
-  "message": "Video ad generated successfully",
-  "ad": {
-    "id": 7,
+  "message": "Video generated successfully. Use activate_video to push live.",
+  "video": {
+    "id": 5,
     "campaign_id": 5,
-    "campaign_name": "Holiday Sparkle",
-    "video_path": "campaign_5_ad_7_1734567890.mp4",
-    "prompt_used": "A cinematic fashion video featuring a woman with red hair wearing a striking red floral fitted gown...",
-    "duration_seconds": 6,
-    "source_image": "dress_formal_dress_002.jpg",
-    "artifact_saved": true,
-    "metrics_generated": 90
+    "product_name": "elegant-black-cocktail-dress",
+    "video_filename": "elegant-black-cocktail-dress-121924-asian-beach-golden-hour.mp4",
+    "thumbnail_path": "elegant-black-cocktail-dress-121924-asian-beach-golden-hour-thumbnail.png",
+    "variation": "asian-beach-golden-hour",
+    "pipeline": "two-stage",
+    "duration_seconds": 8,
+    "generation_time_seconds": 245,
+    "status": "generated"
   },
-  "video_properties": {
-    "mood": "sophisticated",
-    "energy_level": "moderate",
-    "visual_style": "cinematic",
-    "color_temperature": "neutral",
-    "camera_movement": "orbit",
-    "dominant_colors": ["red", "white"]
-  }
+  "note": "Video is in 'generated' status. Metrics will only be created after activation."
 }
 ```
 
 **What to Look For:**
-- Video generation takes 2-5 minutes (Veo 3.1 processing)
-- `artifact_saved: true` means video is viewable in ADK Web UI
-- `metrics_generated: 90` confirms 90 days of mock metrics created
-- `video_properties` extracted automatically by gemini-2.5-pro
+- Thumbnail saved for preview (scene image from Stage 1)
+- Status is `generated` (NOT activated yet)
+- NO metrics until activated
+- Descriptive filename with product-date-variation
 
-### Step 6: Activate campaign
+### Step 5: Generate more variations
 ```
-Query: "The video looks great! Activate this campaign."
+Query: "Generate two more variations: one with a European model in an urban setting,
+and one with a Latina model at a rooftop at sunset"
 ```
-**Agent:** Campaign Agent → `update_campaign(campaign_id, status="active")`
+**Agent:** Media Agent → `generate_video_with_variation()` (called twice)
 
 **Expected Response:**
-- Campaign status updated from 'draft' to 'active'
-- Confirmation of activation
-- Summary of campaign assets (1 image, 1 video ad)
+- Two more videos generated in parallel
+- Different variations: "european-urban-day", "latina-rooftop-sunset"
+- All with status `generated`
+
+### Step 6: Review pending videos ⭐ HITL WORKFLOW
+```
+Query: "Show me all pending videos for review"
+```
+**Agent:** Review Agent → `get_video_review_table(status="generated")`
+
+**Expected Response:**
+- Formatted table with all pending videos:
+  - Video ID, Status, Product, Store, Variation
+  - **Clickable View links** to preview videos in browser
+  - Product image links
+- Instructions: "To activate, say: activate 5, 6, 7"
+
+### Step 7: Activate selected videos ⭐ ACTIVATION
+```
+Query: "The beach and rooftop videos look great. Activate videos 5 and 7."
+```
+**Agent:** Review Agent → `activate_batch([5, 7])`
+
+**Expected Response:**
+- Videos activated and now LIVE
+- 30 days of mock metrics generated for each
+- Status changed to `activated`
+- Urban variation (6) remains in `generated` status for later
+
+### Step 8: Check activation summary
+```
+Query: "Give me a summary of video statuses for this campaign"
+```
+**Agent:** Review Agent → `get_activation_summary(campaign_id=5)`
+
+**Expected Response:**
+- Status counts: 2 activated (live), 1 generated (pending)
+- Total videos: 3
+- Reminder: Analytics Agent can now show metrics for activated videos
 
 ---
 
@@ -293,20 +337,21 @@ Query: "Compare the performance of all our campaigns side by side"
 - Rankings by RPI and total revenue
 - Best performer highlighted
 
-### Step 2: Find top performing ads
+### Step 2: Find top performing videos
 ```
-Query: "What are our top 5 best performing video ads by revenue?"
+Query: "What are our top 5 best performing video ads by RPI?"
 ```
-**Agent:** Analytics Agent → `get_top_performing_ads(metric="revenue", limit=5)`
+**Agent:** Analytics Agent → `get_top_performing_ads(metric="revenue_per_impression", limit=5)`
 
 **Expected Response:**
-- Ranked list of top 5 ads
-- For each ad:
+- Ranked list of top 5 videos from `campaign_videos` table
+- For each video:
   - Campaign name and location
-  - Total revenue generated
-  - Key characteristics (mood, setting, garment)
-  - Source image used
+  - Product info (name, category, color, style)
+  - RPI, impressions, dwell time, circulation
+  - Variation characteristics (model ethnicity, setting, mood)
 - Common traits among top performers identified
+- Note: Only includes ACTIVATED videos with metrics
 
 ### Step 3: Deep dive on winner
 ```
@@ -356,70 +401,111 @@ Query: "Show me metrics for Urban Professional before and after. Create a compar
 
 ---
 
-## Journey 4: Geographic Strategy & Visualization (Intermediate - 6 steps)
+## Journey 4: Geographic Strategy & Google Maps Integration (Intermediate - 8 steps)
 
 **Persona:** Director of Retail Media Networks
-**Duration:** ~5 minutes
+**Duration:** ~7 minutes
 **Agents Used:** Campaign Agent, Analytics Agent
 
-### Step 1: Get geographic overview
+### Step 1: Get rich campaign map data ⭐ NEW FEATURE
 ```
-Query: "Show me where all our campaigns are located"
+Query: "Show me all campaign locations with Google Maps links"
 ```
-**Agent:** Campaign Agent → `get_campaign_locations()`
+**Agent:** Analytics Agent → `get_campaign_map_data()`
 
 **Expected Response:**
-- List of 4 campaigns with locations:
-  - Los Angeles, CA
-  - New York, NY
-  - Chicago, IL
-  - Seattle, WA
-- Coordinates for each (geocoded)
-- Map visualization URL
+- Rich location data with clickable Google Maps URLs:
+  - **Direct links** to open each store in Google Maps
+  - Product info and images for each location
+  - Video thumbnails and URLs
+  - Performance metrics per location
+- Summary with total revenue, impressions, active videos
 
-### Step 2: Generate performance map
+**Sample Response:**
+```json
+{
+  "status": "success",
+  "locations": [
+    {
+      "campaign_id": 1,
+      "campaign_name": "Blue Floral Maxi - Westfield LA",
+      "store_name": "Westfield Century City",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=...",
+      "product": {"name": "blue-floral-maxi-dress", "image_url": "..."},
+      "videos": [{"id": 1, "video_url": "...", "thumbnail_url": "..."}],
+      "metrics": {"total_revenue": 45230.50, "rpi": 0.362}
+    }
+  ]
+}
 ```
-Query: "Create a map visualization showing campaign performance by location"
+
+### Step 2: Generate real Google Static Map ⭐ NEW FEATURE
 ```
-**Agent:** Analytics Agent → `generate_map_visualization(visualization_type="performance_map")`
-**Model:** gemini-3-pro-image-preview (generates map image)
+Query: "Create a static map image with all store locations"
+```
+**Agent:** Analytics Agent → `generate_static_map(color_by="revenue")`
+**API:** Google Static Maps API
 
 **Expected Response:**
-- Map image generated (saved as artifact)
-- US map with campaign markers
-- Bubble sizes representing revenue
-- Color coding by status
-- Legend and summary stats
+- Real Google Maps image with markers
+- Color-coded markers:
+  - Green = high revenue (>$30K)
+  - Yellow = medium revenue ($15K-$30K)
+  - Red = lower revenue (<$15K)
+- Clickable individual Google Maps URLs for each marker
+- Direct link to view the map image
 
-### Step 3: Regional comparison
+### Step 3: Generate AI performance map with style
 ```
-Query: "How does the West Coast compare to East Coast in terms of performance?"
+Query: "Create an infographic map showing campaign performance"
 ```
-**Agent:** Analytics Agent → `generate_map_visualization(visualization_type="regional_comparison")`
+**Agent:** Analytics Agent → `generate_map_visualization(visualization_type="performance_map", style="infographic")`
+**Model:** gemini-3-pro-image-preview
 
 **Expected Response:**
-- Regional breakdown:
-  - West Coast (LA, Seattle): combined metrics
-  - East Coast (NYC): metrics
-  - Midwest (Chicago): metrics
-- Revenue per region
-- Engagement differences
-- Style preferences by region
+- AI-generated infographic map (saved as artifact)
+- US map with revenue bubbles at each location
+- Clean business dashboard style
+- Legend and summary stats panel
 
-### Step 4: Explore local market
+### Step 4: Try artistic map style ⭐ STYLE OPTIONS
 ```
-Query: "What fashion stores are near our LA campaign location? Any competitors?"
+Query: "Create an artistic magazine-style map visualization"
+```
+**Agent:** Analytics Agent → `generate_map_visualization(visualization_type="performance_map", style="artistic")`
+
+**Expected Response:**
+- Magazine-quality editorial map
+- Elegant typography and sophisticated colors
+- Fashion-forward visual language
+- Same data, different presentation
+
+### Step 5: Regional comparison
+```
+Query: "How does the West Coast compare to East Coast in terms of RPI?"
+```
+**Agent:** Analytics Agent → `generate_map_visualization(visualization_type="regional_comparison", style="simple")`
+
+**Expected Response:**
+- Minimal, data-focused regional comparison
+- Bar chart with actual values
+- West Coast vs East Coast vs Midwest
+- RPI, revenue, and impressions per region
+
+### Step 6: Explore local market
+```
+Query: "What fashion stores are near our LA campaign location?"
 ```
 **Agent:** Campaign Agent → `search_nearby_stores(city="Los Angeles", state="CA", business_type="fashion")`
-**API:** Google Maps Places API (requires MAPS_API_KEY)
+**API:** Google Maps Places API
 
 **Expected Response:**
-- Nearby stores search results
-- List of fashion retailers within 5km
+- Nearby stores with Google Maps Place URLs
 - Store names, ratings, addresses
+- Click to open any store in Google Maps
 - Competitive landscape insight
 
-### Step 5: Get demographics
+### Step 7: Get demographics
 ```
 Query: "What are the demographics and fashion preferences in Los Angeles?"
 ```
@@ -434,14 +520,16 @@ Query: "What are the demographics and fashion preferences in Los Angeles?"
 - Style preferences: casual, athleisure, bohemian
 - Market insight summary
 
-### Step 6: Create market opportunity map
+### Step 8: Create market opportunity map
 ```
 Query: "Generate a market opportunity visualization showing where we should expand"
 ```
+**Agent:** Analytics Agent → `generate_map_visualization(visualization_type="market_opportunity", style="infographic")`
+
 **Expected Response:**
 - Market opportunity map generated
-- Current locations marked
-- Opportunity scores by market
+- Current locations with revenue halos
+- Opportunity scores based on market index
 - Expansion recommendations
 - Underserved regions highlighted
 
@@ -866,16 +954,26 @@ Every generated video is automatically analyzed by Gemini 2.5 Pro to extract 25+
 
 ### Chart Types (Analytics Agent)
 
+Charts use **anti-hallucination templates** with explicit data values from `video_metrics` table.
+
 | Type | Description | Best For |
 |------|-------------|----------|
-| `trendline` | Line chart showing metric over time | Daily/weekly performance trends |
+| `trendline` | Line chart with exact data points | Daily RPI/impression trends |
 | `bar_chart` | Bar chart with weekly aggregates | Comparing periods |
-| `comparison` | Multi-metric KPI card | Executive summary |
-| `infographic` | Magazine-quality visual summary | Presentations |
+| `comparison` | Multi-metric KPI dashboard card (2x2 grid) | Executive summary |
+| `infographic` | Comprehensive visual with mini charts | Presentations |
 
-**Metrics available:** `revenue`, `impressions`, `dwell_time`, `circulation`, `revenue_per_impression`
+**Metrics available:** `revenue_per_impression`, `impressions`, `dwell_time`, `circulation`
+
+**Template Features:**
+- Explicit "DO NOT invent" clauses prevent AI from fabricating data
+- All data points listed in prompt with exact values
+- Statistics (min, max, avg, trend) pre-calculated from DB
+- 16:9 aspect ratio for presentation quality
 
 ### Map Types (Analytics Agent)
+
+**AI-Generated Map Visualizations** (`generate_map_visualization`):
 
 | Type | Description | Example Query |
 |------|-------------|---------------|
@@ -885,28 +983,105 @@ Every generated video is automatically analyzed by Gemini 2.5 Pro to extract 25+
 | `market_opportunity` | Expansion potential visualization | "Where should we expand?" |
 | `campaign_heatmap` | Revenue density overlay | "Create a revenue heatmap" |
 
+**Visualization Styles** (NEW - `style` parameter):
+
+| Style | Description | Best For |
+|-------|-------------|----------|
+| `infographic` | Clean business dashboard (default) | Executive presentations, reports |
+| `artistic` | Magazine-quality editorial | Marketing materials, creative reviews |
+| `simple` | Minimal, data-focused design | Quick data checks, technical analysis |
+
+**Google Maps Integration Tools** (NEW):
+
+| Tool | Description | Returns |
+|------|-------------|---------|
+| `get_campaign_map_data()` | Rich location data with links | Google Maps URLs, product images, video URLs, metrics |
+| `generate_static_map()` | Real Google Static Maps image | Map image URL with color-coded markers |
+
+**Static Map Options** (`generate_static_map`):
+
+| Parameter | Values | Description |
+|-----------|--------|-------------|
+| `map_type` | roadmap, satellite, terrain, hybrid | Google Maps base style |
+| `color_by` | status, revenue | Marker coloring scheme |
+| `size` | "640x480", "800x600" | Image dimensions |
+
 ---
 
 ## Quick Reference: Single-Purpose Queries
 
 For quick demos of specific features:
 
+### HITL Workflow (Start Here!)
+```
+"Show me all campaigns and their video status"
+"Show me the video review table with preview links"
+"List all pending videos for review"
+"Activate videos 1 and 2"
+"Get activation summary for campaign 1"
+```
+
 ### Campaign Management
 ```
 "List all campaigns"
-"Create a campaign called 'Holiday Sparkle' for Miami"
+"Show me all active campaigns"
+"Create a campaign for the elegant black cocktail dress at our Miami store"
 "Update campaign 4 to active status"
 "What campaigns are in draft status?"
 ```
 
-### Media Generation
+### Product Browsing
 ```
-"List available seed images"
-"Add dress_formal_dress_002.jpg to campaign 2"
-"Analyze the image for campaign 1"
-"Generate a video ad for campaign 1"
-"Generate an 8-second video with custom prompt: A model twirls in a flowing summer dress"
-"Create a setting variation of ad 1"
+"Show me all available products"
+"List products in the dress category"
+"What products do we have for a summer campaign?"
+```
+
+### Video Generation (Two-Stage Pipeline)
+```
+"Generate a video for campaign 1 with an Asian model on a beach at golden hour"
+"Generate a video with a European model in an urban setting"
+"What variation options do I have for video generation?"
+"Show me variation presets"
+```
+
+### Analytics (Post-Activation)
+```
+"Get metrics for campaign 1 for the last 30 days"
+"What's the RPI and dwell time for the Blue Floral Maxi Dress campaign?"
+"What are the top 5 best performing video ads by revenue per impression?"
+"Show me top performers ranked by dwell time"
+"Give me insights on campaign 1. What's working?"
+"Compare campaigns 1, 2, 3, and 4 side by side"
+"Which campaign has the best RPI?"
+```
+
+### Chart Generation (Anti-Hallucination Templates)
+```
+"Generate a trendline chart showing revenue per impression for campaign 1 over 30 days"
+"Create a bar chart of weekly impressions for campaign 1"
+"Generate a comparison KPI card for campaign 1 showing all metrics"
+"Create an infographic visualization of campaign 1 performance"
+```
+
+### Location Features & Google Maps
+```
+"Show me all campaign locations with Google Maps links"
+"Get all campaign locations with product and video info"
+"Create a static map with all store locations"
+"Generate a static map colored by revenue"
+"Search for fashion stores near Los Angeles"
+"What are the demographics for New York?"
+```
+
+### Map Visualizations (with style options)
+```
+"Generate a performance map showing all campaigns on a US map"
+"Create an infographic map showing campaign performance"
+"Create an artistic magazine-style map visualization"
+"Create a regional comparison map showing West Coast vs East Coast RPI"
+"Generate a market opportunity visualization in infographic style"
+"Create a revenue heatmap"
 ```
 
 ### Property-Controlled Video Generation
@@ -919,55 +1094,113 @@ For quick demos of specific features:
 
 ### Video Properties
 ```
-"Get video properties for ad 1"
-"Show video properties for all ads in campaign 3"
+"Get video properties for video 1"
+"Show video properties for all videos in campaign 1"
 "What are the properties of our top performing videos?"
-"Compare video properties across our best ads"
-```
-
-### Analytics
-```
-"Get metrics for campaign 1"
-"What are the top 5 ads by revenue?"
-"Compare campaigns 1 and 2"
-"Give me insights for campaign 1"
-"Generate a trendline chart for campaign 1"
-"Create a bar chart of weekly revenue"
-```
-
-### Location Features
-```
-"Get all campaign locations"
-"Search for fashion stores near Los Angeles"
-"What are the demographics for New York?"
-"Generate a performance map"
-"Show regional comparison"
+"Compare video properties across our best videos"
 ```
 
 ### Advanced
 ```
-"Apply the winning formula from the top ad to campaign 4"
-"Generate 3 variations of ad 1 with different moods"
+"Apply the winning formula from the top video to campaign 4"
+"Generate 3 variations with different moods for campaign 1"
 "What characteristics do our top performers share?"
-"Create a market opportunity visualization"
 ```
+
+---
+
+## Recommended Test Flow (Copy-Paste Ready)
+
+Use this sequence to test the full HITL workflow end-to-end:
+
+### Step 1: Check Current State
+```
+Show me all campaigns and their video status
+```
+
+### Step 2: View Pending Videos
+```
+Show me the video review table with preview links
+```
+
+### Step 3: Activate Videos (Generates Metrics)
+```
+Activate videos 1 and 2
+```
+
+### Step 4: Verify Activation
+```
+Get activation summary for campaign 1
+```
+
+### Step 5: Check Metrics (Post-Activation)
+```
+Get metrics for campaign 1
+```
+
+### Step 6: Generate Chart
+```
+Generate a trendline chart showing RPI for campaign 1 over 30 days
+```
+
+### Step 7: Compare Campaigns
+```
+Compare all campaigns and tell me which has the best performance
+```
+
+### Step 8: Generate Map
+```
+Generate a performance map showing all campaigns on a US map
+```
+
+---
+
+## Analytics Function Reference
+
+| Function | Query Example | What It Returns |
+|----------|---------------|-----------------|
+| `get_campaign_metrics` | "Get metrics for campaign 1" | Daily + aggregated metrics from `video_metrics` |
+| `get_top_performing_ads` | "Top 5 videos by RPI" | Ranked videos with product info from `campaign_videos` |
+| `get_campaign_insights` | "Insights for campaign 1" | Trend analysis, best/worst days, recommendations |
+| `compare_campaigns` | "Compare campaigns 1 and 2" | Side-by-side with `video_count`, `activated_count` |
+| `generate_metrics_visualization` | "Create a trendline chart" | AI-generated chart using anti-hallucination templates |
+| `get_campaign_map_data` | "Show campaign locations" | Google Maps URLs, product images, video URLs |
+| `generate_map_visualization` | "Create a performance map" | AI-generated infographic map |
 
 ---
 
 ## Demo Tips
 
-1. **Wait for video generation**: Veo 3.1 takes 2-5 minutes. Use this time to explain the process or show other features.
+1. **HITL is key**: Videos must be ACTIVATED before metrics appear. Show the workflow:
+   - Generate video → status='generated' (no metrics)
+   - Activate video → status='activated' (30 days of metrics created)
+   - Use Review Agent for activation
 
-2. **Check artifacts**: After generating videos/images/charts, remind viewers they can see them in the ADK Web UI artifacts panel.
+2. **Wait for video generation**: Veo 3.1 takes 2-5 minutes. Use this time to explain the process or show other features.
 
-3. **Use natural language**: The agent understands context. You don't need exact command syntax.
+3. **Check artifacts**: After generating videos/images/charts, remind viewers they can see them in the ADK Web UI artifacts panel.
 
-4. **Build on previous responses**: Reference "the top performer" or "that campaign" - the agent maintains context.
+4. **Use natural language**: The agent understands context. You don't need exact command syntax.
 
-5. **Show the handoff**: Point out when the coordinator delegates to specialized agents.
+5. **Build on previous responses**: Reference "the top performer" or "that campaign" - the agent maintains context.
 
-6. **Highlight the data**: All mock metrics are realistic with 90 days of history per campaign.
+6. **Show the handoff**: Point out when the coordinator delegates to specialized agents.
 
-7. **Video properties are auto-extracted**: Every video is automatically analyzed after generation to extract mood, energy, style, and 25+ other properties. Show this by asking "Get video properties for ad X" after generating.
+7. **Metrics use NEW schema**: All analytics functions query `video_metrics` + `campaign_videos` tables. The column is `dwell_time_seconds` (not `dwell_time`).
 
-8. **Property-controlled generation**: Demonstrate fine-grained control by requesting specific mood (quirky, warm, bold), energy (calm, dynamic), colors (warm, cool), and lighting (dramatic, natural). The system builds templated prompts from these properties.
+8. **Video properties are auto-extracted**: Every video is automatically analyzed after generation to extract mood, energy, style, and 25+ other properties. Show this by asking "Get video properties for video X" after generating.
+
+9. **Property-controlled generation**: Demonstrate fine-grained control by requesting specific mood (quirky, warm, bold), energy (calm, dynamic), colors (warm, cool), and lighting (dramatic, natural). The system builds templated prompts from these properties.
+
+10. **Google Maps links are clickable**: When you get campaign map data, the `google_maps_url` links open directly in Google Maps (browser or app). Great for showing real store locations to stakeholders.
+
+11. **Three map visualization styles**: Try different styles for different audiences:
+    - `infographic` for executives and presentations
+    - `artistic` for marketing and creative teams
+    - `simple` for quick data checks
+
+12. **Static vs AI Maps**: Use `generate_static_map()` for real Google Maps images with markers. Use `generate_map_visualization()` for AI-generated infographics with more creative control.
+
+13. **Anti-hallucination charts**: Chart generation uses structured templates with explicit data values. The prompt includes "DO NOT invent" rules to prevent AI from fabricating data points. Charts show ONLY real data from `video_metrics` table.
+
+14. **RPI is THE key metric**: Revenue Per Impression is the primary KPI for retail media. Always highlight RPI when discussing performance.

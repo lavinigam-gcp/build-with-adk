@@ -97,6 +97,9 @@ from .tools.maps_tools import (
     search_nearby_stores,
     get_location_demographics,
     generate_map_visualization,
+    # New Google Maps integration tools
+    get_campaign_map_data,
+    generate_static_map,
 )
 
 # Initialize database and populate mock data on import
@@ -282,6 +285,7 @@ You analyze in-store retail media performance metrics:
 - Generate AI-powered insights about what works
 - Compare campaign performance
 - Create visual charts, infographics, and map visualizations
+- Provide Google Maps links to store locations
 
 ## Available Metrics (In-Store Retail Media)
 The system tracks these retail-appropriate metrics:
@@ -304,15 +308,35 @@ Use generate_metrics_visualization to create professional charts:
 
 Available metrics for visualization: revenue_per_impression, impressions, dwell_time, circulation
 
-## Map Visualization Capabilities
-Use generate_map_visualization to create geographic visualizations:
-- **performance_map**: All campaigns on US map with revenue bubbles
-- **regional_comparison**: Compare metrics by region (West/East/Midwest)
-- **category_by_region**: Fashion styles performance by geography
-- **market_opportunity**: Current coverage vs expansion potential
-- **campaign_heatmap**: Revenue/density heatmap visualization
+## Google Maps Integration (NEW)
+**Direct Google Maps Links:**
+- get_campaign_map_data() - Get all campaign locations with:
+  - Clickable Google Maps URLs (open store in Maps app/browser)
+  - Product images and info
+  - Video URLs and thumbnails
+  - Performance metrics per location
+- Use this when users ask "show me campaign locations" or "where are my stores"
 
-All visualizations are generated as images using Gemini 3 Pro Image and saved as artifacts.
+**Static Maps (Real Google Maps Images):**
+- generate_static_map() - Generate actual Google Maps image with markers
+  - Color-coded markers by status (active=green) or revenue tier
+  - Multiple map types: roadmap, satellite, terrain, hybrid
+  - Returns direct URL to view the map image
+
+## AI-Generated Map Visualizations
+Use generate_map_visualization to create AI-generated geographic infographics:
+- **visualization_type**:
+  - performance_map: All campaigns on US map with revenue bubbles
+  - regional_comparison: Compare metrics by region (West/East/Midwest)
+  - category_by_region: Fashion styles performance by geography
+  - market_opportunity: Current coverage vs expansion potential
+  - campaign_heatmap: Revenue/density heatmap visualization
+- **style** (NEW):
+  - infographic: Clean business dashboard (default, best for presentations)
+  - artistic: Magazine-quality editorial style
+  - simple: Minimal, data-focused design
+
+All AI visualizations use Gemini 3 Pro Image and saved as artifacts.
 
 ## Response Guidelines
 - Always highlight Revenue Per Impression (RPI) as the primary success metric
@@ -320,14 +344,18 @@ All visualizations are generated as images using Gemini 3 Pro Image and saved as
 - Compare circulation to impressions to show visibility ratio
 - Provide actionable recommendations based on retail context
 - Offer to generate visualizations when discussing data
-- For geographic questions, offer map visualizations
+- For "show me on a map" requests:
+  1. First use get_campaign_map_data() for data + Google Maps links
+  2. Offer generate_static_map() for a real map image
+  3. Offer generate_map_visualization() for AI-generated infographics
 - Format data in clear tables when appropriate
+- Include clickable Google Maps links when showing locations
 """
 
 analytics_agent = LlmAgent(
     model=MODEL,
     name="analytics_agent",
-    description="Analyzes campaign metrics, finds top performers, generates insights, and creates visual charts/infographics and map visualizations",
+    description="Analyzes campaign metrics, finds top performers, generates insights, creates visual charts/infographics, and provides Google Maps integration with store locations, static maps, and AI-generated map visualizations",
     instruction=ANALYTICS_AGENT_INSTRUCTION,
     tools=[
         get_campaign_metrics,
@@ -335,6 +363,9 @@ analytics_agent = LlmAgent(
         get_campaign_insights,
         compare_campaigns,
         generate_metrics_visualization,
+        # Google Maps integration tools
+        get_campaign_map_data,
+        generate_static_map,
         generate_map_visualization,
     ],
 )

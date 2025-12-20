@@ -23,7 +23,7 @@ from google import genai
 from google.genai import types
 from google.adk.tools import ToolContext
 
-from ..config import GOOGLE_MAPS_API_KEY
+from ..config import GOOGLE_MAPS_API_KEY, IMAGE_GENERATION, GCS_BUCKET
 from ..database.db import get_db_cursor
 
 
@@ -321,9 +321,536 @@ REGION_MAPPING = {
 }
 
 
+# =============================================================================
+# Google Maps URL Helper Functions
+# =============================================================================
+
+def get_google_maps_url(lat: float, lng: float, label: str = None, zoom: int = 15) -> str:
+    """Generate a direct Google Maps URL for a location.
+
+    Opens the location in Google Maps when clicked (works on mobile and desktop).
+
+    Args:
+        lat: Latitude
+        lng: Longitude
+        label: Optional label for the place (used in search query)
+        zoom: Zoom level (1-20, default 15)
+
+    Returns:
+        Direct Google Maps URL string
+    """
+    if label:
+        # Use search query format for labeled locations
+        import urllib.parse
+        query = urllib.parse.quote(f"{label} @{lat},{lng}")
+        return f"https://www.google.com/maps/search/?api=1&query={query}"
+    else:
+        # Direct coordinate format
+        return f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
+
+
+def get_google_maps_place_url(place_id: str) -> str:
+    """Generate Google Maps URL from a Place ID.
+
+    Place IDs are returned by Google Places API and provide exact locations.
+
+    Args:
+        place_id: Google Places API place ID
+
+    Returns:
+        Google Maps URL for the place
+    """
+    return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+
+
+def get_google_maps_directions_url(
+    origin: tuple,
+    destination: tuple,
+    waypoints: list = None,
+    mode: str = "driving"
+) -> str:
+    """Generate Google Maps directions URL.
+
+    Args:
+        origin: (lat, lng) tuple for start location
+        destination: (lat, lng) tuple for end location
+        waypoints: Optional list of (lat, lng) waypoint tuples
+        mode: Travel mode (driving, walking, bicycling, transit)
+
+    Returns:
+        Google Maps directions URL
+    """
+    url = f"https://www.google.com/maps/dir/?api=1"
+    url += f"&origin={origin[0]},{origin[1]}"
+    url += f"&destination={destination[0]},{destination[1]}"
+    url += f"&travelmode={mode}"
+
+    if waypoints:
+        wp_str = "|".join([f"{wp[0]},{wp[1]}" for wp in waypoints])
+        url += f"&waypoints={wp_str}"
+
+    return url
+
+
+# =============================================================================
+# Rich Campaign Map Data
+# =============================================================================
+
+def get_campaign_map_data(
+    campaign_id: int = None,
+    include_videos: bool = True,
+    include_products: bool = True,
+    include_metrics: bool = True
+) -> dict:
+    """Get rich campaign map data with Google Maps links.
+
+    Returns comprehensive location data with:
+    - Direct Google Maps URLs for each store
+    - Product images (GCS public URLs)
+    - Video thumbnails and video URLs
+    - Performance metrics per location
+    - Zone/area suggestions
+
+    Args:
+        campaign_id: Optional filter for specific campaign
+        include_videos: Include video URLs and thumbnails
+        include_products: Include product info and images
+        include_metrics: Include performance metrics
+
+    Returns:
+        Dictionary with rich location data and links
+    """
+    from .. import storage
+
+    with get_db_cursor() as cursor:
+        # Build query based on filters
+        query = '''
+            SELECT
+                c.id as campaign_id,
+                c.name as campaign_name,
+                c.store_name,
+                c.city,
+                c.state,
+                c.status,
+                c.category,
+                p.id as product_id,
+                p.name as product_name,
+                p.category as product_category,
+                p.color as product_color,
+                p.style as product_style,
+                p.fabric as product_fabric,
+                p.image_filename as product_image
+            FROM campaigns c
+            LEFT JOIN products p ON c.product_id = p.id
+        '''
+
+        if campaign_id:
+            query += " WHERE c.id = ?"
+            cursor.execute(query, (campaign_id,))
+        else:
+            cursor.execute(query)
+
+        campaigns = cursor.fetchall()
+
+        if not campaigns:
+            return {
+                "status": "error",
+                "message": f"No campaigns found" + (f" for id {campaign_id}" if campaign_id else "")
+            }
+
+        locations = []
+        total_revenue = 0
+        total_impressions = 0
+        active_videos = 0
+
+        for camp in campaigns:
+            location_key = f"{camp['city']}, {camp['state']}"
+            coords = CITY_COORDINATES.get(location_key, {"lat": 39.8, "lng": -98.5})
+
+            # Build location data
+            loc_data = {
+                "campaign_id": camp["campaign_id"],
+                "campaign_name": camp["campaign_name"],
+                "store_name": camp["store_name"],
+                "city": camp["city"],
+                "state": camp["state"],
+                "status": camp["status"],
+                "category": camp["category"],
+                "coordinates": coords,
+                "google_maps_url": get_google_maps_url(
+                    coords["lat"],
+                    coords["lng"],
+                    label=camp["store_name"]
+                ),
+            }
+
+            # Add product info
+            if include_products and camp["product_id"]:
+                product_image_url = None
+                if camp["product_image"]:
+                    product_image_url = storage.get_public_url(
+                        f"product-images/{camp['product_image']}"
+                    )
+
+                loc_data["product"] = {
+                    "id": camp["product_id"],
+                    "name": camp["product_name"],
+                    "category": camp["product_category"],
+                    "color": camp["product_color"],
+                    "style": camp["product_style"],
+                    "fabric": camp["product_fabric"],
+                    "image_url": product_image_url
+                }
+
+            # Add videos
+            if include_videos:
+                cursor.execute('''
+                    SELECT id, video_filename, thumbnail_path, variation_name, status
+                    FROM campaign_videos
+                    WHERE campaign_id = ?
+                    ORDER BY created_at DESC
+                ''', (camp["campaign_id"],))
+                videos = cursor.fetchall()
+
+                video_list = []
+                for vid in videos:
+                    video_url = storage.get_video_public_url(vid["video_filename"]) if vid["video_filename"] else None
+                    thumb_filename = vid["thumbnail_path"].split("/")[-1] if vid["thumbnail_path"] and "/" in vid["thumbnail_path"] else vid["thumbnail_path"]
+                    thumbnail_url = storage.get_thumbnail_public_url(thumb_filename) if thumb_filename else None
+
+                    video_list.append({
+                        "id": vid["id"],
+                        "video_url": video_url,
+                        "thumbnail_url": thumbnail_url,
+                        "variation": vid["variation_name"],
+                        "status": vid["status"]
+                    })
+
+                    if vid["status"] == "activated":
+                        active_videos += 1
+
+                loc_data["videos"] = video_list
+
+            # Add metrics
+            if include_metrics:
+                cursor.execute('''
+                    SELECT
+                        SUM(impressions) as total_impressions,
+                        AVG(dwell_time_seconds) as avg_dwell,
+                        SUM(circulation) as total_circulation,
+                        SUM(revenue) as total_revenue
+                    FROM video_metrics vm
+                    JOIN campaign_videos cv ON vm.video_id = cv.id
+                    WHERE cv.campaign_id = ?
+                ''', (camp["campaign_id"],))
+                metrics = cursor.fetchone()
+
+                if metrics and metrics["total_impressions"]:
+                    camp_revenue = round(metrics["total_revenue"], 2) if metrics["total_revenue"] else 0
+                    camp_impressions = int(metrics["total_impressions"])
+                    rpi = round(camp_revenue / camp_impressions, 4) if camp_impressions > 0 else 0
+
+                    loc_data["metrics"] = {
+                        "total_revenue": camp_revenue,
+                        "total_impressions": camp_impressions,
+                        "avg_dwell_time": round(metrics["avg_dwell"], 1) if metrics["avg_dwell"] else 0,
+                        "total_circulation": int(metrics["total_circulation"]) if metrics["total_circulation"] else 0,
+                        "rpi": rpi
+                    }
+
+                    total_revenue += camp_revenue
+                    total_impressions += camp_impressions
+                else:
+                    loc_data["metrics"] = None
+
+            locations.append(loc_data)
+
+        return {
+            "status": "success",
+            "location_count": len(locations),
+            "locations": locations,
+            "summary": {
+                "total_campaigns": len(locations),
+                "total_revenue": round(total_revenue, 2),
+                "total_impressions": total_impressions,
+                "active_videos": active_videos,
+                "overall_rpi": round(total_revenue / total_impressions, 4) if total_impressions > 0 else 0
+            },
+            "message": "Click google_maps_url links to open store locations in Google Maps"
+        }
+
+
+# =============================================================================
+# Google Static Maps API
+# =============================================================================
+
+def generate_static_map(
+    locations: list = None,
+    map_type: str = "roadmap",
+    size: str = "640x480",
+    zoom: int = None,
+    markers: bool = True,
+    color_by: str = "status"
+) -> dict:
+    """Generate a Google Static Maps image with markers.
+
+    Uses Google Static Maps API to create real map images with markers
+    at campaign locations. Markers are color-coded based on the color_by parameter.
+
+    Args:
+        locations: List of location dicts with lat/lng. If None, uses all campaigns.
+        map_type: Map type (roadmap, satellite, terrain, hybrid)
+        size: Image size in pixels (e.g., "640x480", "800x600")
+        zoom: Zoom level (1-20). If None, auto-fits all markers.
+        markers: Whether to show markers
+        color_by: How to color markers - "status" (active=green, draft=gray) or
+                  "revenue" (high=green, medium=yellow, low=red)
+
+    Returns:
+        Dictionary with static map URL and marker data
+    """
+    if not GOOGLE_MAPS_API_KEY:
+        return {
+            "status": "error",
+            "message": "GOOGLE_MAPS_API_KEY environment variable not set"
+        }
+
+    # Get campaign locations if not provided
+    if locations is None:
+        with get_db_cursor() as cursor:
+            cursor.execute('''
+                SELECT
+                    c.id, c.name, c.city, c.state, c.status,
+                    COALESCE(SUM(vm.revenue), 0) as total_revenue
+                FROM campaigns c
+                LEFT JOIN campaign_videos cv ON c.id = cv.campaign_id
+                LEFT JOIN video_metrics vm ON cv.id = vm.video_id
+                GROUP BY c.id
+            ''')
+            campaigns = cursor.fetchall()
+
+        locations = []
+        for camp in campaigns:
+            location_key = f"{camp['city']}, {camp['state']}"
+            coords = CITY_COORDINATES.get(location_key)
+            if coords:
+                locations.append({
+                    "id": camp["id"],
+                    "name": camp["name"],
+                    "lat": coords["lat"],
+                    "lng": coords["lng"],
+                    "status": camp["status"],
+                    "revenue": camp["total_revenue"] or 0
+                })
+
+    if not locations:
+        return {
+            "status": "error",
+            "message": "No locations found to display on map"
+        }
+
+    # Build Static Maps URL
+    base_url = "https://maps.googleapis.com/maps/api/staticmap?"
+    params = [
+        f"size={size}",
+        f"maptype={map_type}",
+        f"key={GOOGLE_MAPS_API_KEY}"
+    ]
+
+    if zoom:
+        params.append(f"zoom={zoom}")
+        # Use center of first location if zoom is specified
+        params.append(f"center={locations[0]['lat']},{locations[0]['lng']}")
+
+    # Add markers
+    marker_data = []
+    if markers:
+        for i, loc in enumerate(locations):
+            # Determine marker color
+            if color_by == "status":
+                color = "green" if loc.get("status") == "active" else "gray"
+            else:  # revenue
+                revenue = loc.get("revenue", 0)
+                if revenue > 30000:
+                    color = "green"
+                elif revenue > 15000:
+                    color = "yellow"
+                else:
+                    color = "red"
+
+            label = str(i + 1)
+            lat, lng = loc["lat"], loc["lng"]
+
+            params.append(f"markers=color:{color}%7Clabel:{label}%7C{lat},{lng}")
+
+            marker_data.append({
+                "label": label,
+                "name": loc.get("name", "Unknown"),
+                "lat": lat,
+                "lng": lng,
+                "color": color,
+                "google_maps_url": get_google_maps_url(lat, lng, label=loc.get("name"))
+            })
+
+    static_map_url = base_url + "&".join(params)
+
+    return {
+        "status": "success",
+        "static_map_url": static_map_url,
+        "map_type": map_type,
+        "size": size,
+        "marker_count": len(marker_data),
+        "markers": marker_data,
+        "message": "Click static_map_url to view the map image. Click individual google_maps_url links to open locations."
+    }
+
+
+# =============================================================================
+# Prompt Templates for Map Visualizations
+# =============================================================================
+
+MAP_VIZ_TEMPLATES = {
+    "performance_map": {
+        "infographic": """Create a professional business infographic map visualization.
+
+=== REQUIRED LAYOUT (16:9 aspect ratio) ===
+1. US MAP (occupies top 70% of image)
+   - Continental United States outline with state borders
+   - Dark blue ocean (#1a365d), light gray land (#e2e8f0)
+   - Clean, modern cartographic style
+
+2. CAMPAIGN MARKERS (on map at exact locations)
+{markers_section}
+
+3. LEGEND (bottom right corner, 15% width)
+   - Title: "Campaign Performance"
+   - Bubble size = Revenue (show scale: $10K, $30K, $50K)
+   - Green circle = Active campaign
+   - Gray circle = Draft campaign
+
+4. SUMMARY PANEL (bottom left, 25% width)
+   - Total Revenue: ${total_revenue:,.2f}
+   - Total Impressions: {total_impressions:,}
+   - Active Campaigns: {active_count}
+   - Overall RPI: ${overall_rpi:.4f}
+
+=== STYLE REQUIREMENTS ===
+- Clean, flat design with subtle shadows
+- Font: Sans-serif (Arial/Helvetica style)
+- Colors: Professional blue (#2563eb), green (#22c55e), gray (#6b7280)
+- White background for summary panel with light border
+- High contrast text for readability
+
+=== STRICT RULES ===
+- Use ONLY the data values provided above
+- Do NOT invent additional locations or numbers
+- Bubbles must be positioned at the correct US locations
+- Image must be exactly 16:9 aspect ratio""",
+
+        "artistic": """Create a magazine-quality artistic map visualization.
+
+=== ARTISTIC STYLE ===
+- Editorial fashion magazine aesthetic
+- Watercolor or hand-drawn map style
+- Elegant typography with serif headers
+- Soft, sophisticated color palette (rose gold, navy, cream)
+
+=== CONTENT REQUIREMENTS ===
+1. STYLIZED US MAP with artistic treatment
+{markers_section}
+
+2. ELEGANT DATA CALLOUTS
+   - Hand-lettered city labels
+   - Decorative revenue indicators
+   - Fashion-forward visual language
+
+3. SUMMARY (integrated elegantly)
+   - Total Revenue: ${total_revenue:,.2f}
+   - Impressions: {total_impressions:,}
+
+=== STRICT RULES ===
+- Use ONLY provided data values
+- Maintain 16:9 aspect ratio
+- Professional yet artistic quality""",
+
+        "simple": """Create a minimal, data-focused map.
+
+=== MINIMAL LAYOUT ===
+1. CLEAN US MAP with state outlines only
+2. SIMPLE DOT MARKERS at locations:
+{markers_section}
+
+3. COMPACT LEGEND (small, corner)
+4. DATA TABLE (bottom):
+   | Location | Revenue | Impressions |
+   {data_table}
+
+=== STYLE ===
+- Minimal design, maximum clarity
+- Monochrome with single accent color
+- Small, readable typography
+- No decorative elements
+
+Total: ${total_revenue:,.2f} revenue, {total_impressions:,} impressions
+16:9 aspect ratio. Use ONLY provided data."""
+    },
+
+    "regional_comparison": {
+        "infographic": """Create a regional comparison dashboard.
+
+=== LAYOUT ===
+1. US MAP (top 50%) with regions color-coded:
+   - West Coast: Blue (#3b82f6)
+   - East Coast: Orange (#f97316)
+   - Midwest: Green (#22c55e)
+   - South: Purple (#a855f7)
+
+2. BAR CHART (bottom 40%) comparing {metric}:
+{regional_data}
+
+3. INSIGHTS BOX (right side)
+   - Best region highlighted with star
+   - Percentage differences
+
+=== STYLE ===
+- Dashboard aesthetic
+- Bold, clear typography
+- High contrast bars
+- 16:9 aspect ratio
+
+Use ONLY the regional data provided above.""",
+
+        "artistic": """Create an artistic regional performance visualization.
+
+=== ARTISTIC STYLE ===
+- Illustrated map with regional character
+- Each region has distinct visual style
+- Infographic elements with personality
+
+=== REGIONAL DATA ===
+{regional_data}
+
+=== REQUIREMENTS ===
+- Magazine-quality illustration
+- 16:9 aspect ratio
+- Use ONLY provided data""",
+
+        "simple": """Create a simple regional comparison chart.
+
+=== LAYOUT ===
+1. Small US map with region colors
+2. Clean bar chart:
+{regional_data}
+
+Minimal style. 16:9 ratio. Data only - no decoration."""
+    }
+}
+
+
 async def generate_map_visualization(
     visualization_type: str = "performance_map",
     metric: str = "revenue",
+    style: str = "infographic",
     tool_context: ToolContext = None
 ) -> dict:
     """Generate a map-based visualization of campaign performance using Gemini 3 Pro Image.
@@ -339,17 +866,22 @@ async def generate_map_visualization(
             - market_opportunity: Current coverage vs expansion potential
             - campaign_heatmap: Revenue/density heatmap visualization
         metric: Metric to visualize - one of: revenue_per_impression, impressions, dwell_time, circulation
+        style: Visual style - one of:
+            - infographic: Clean business dashboard (default, best for presentations)
+            - artistic: Magazine-quality editorial style
+            - simple: Minimal, data-focused design
         tool_context: ADK ToolContext for artifact storage
 
     Returns:
         Dictionary with visualization details and artifact info
     """
     print(f"[DEBUG MAP VIZ] Starting generate_map_visualization")
-    print(f"[DEBUG MAP VIZ] visualization_type={visualization_type}, metric={metric}")
+    print(f"[DEBUG MAP VIZ] visualization_type={visualization_type}, metric={metric}, style={style}")
 
     valid_types = ["performance_map", "regional_comparison", "category_by_region",
                    "market_opportunity", "campaign_heatmap"]
     valid_metrics = ["revenue_per_impression", "impressions", "dwell_time", "circulation"]
+    valid_styles = ["infographic", "artistic", "simple"]
 
     if visualization_type not in valid_types:
         return {
@@ -363,7 +895,14 @@ async def generate_map_visualization(
             "message": f"Invalid metric. Must be one of: {', '.join(valid_metrics)}"
         }
 
+    if style not in valid_styles:
+        return {
+            "status": "error",
+            "message": f"Invalid style. Must be one of: {', '.join(valid_styles)}"
+        }
+
     # Fetch all campaign data with metrics (in-store retail media metrics)
+    # Uses NEW schema: video_metrics + campaign_videos (HITL workflow)
     print(f"[DEBUG MAP VIZ] Step 1: Fetching campaign data from database...")
     with get_db_cursor() as cursor:
         cursor.execute('''
@@ -374,14 +913,15 @@ async def generate_map_visualization(
                 c.city,
                 c.state,
                 c.status,
-                COUNT(DISTINCT ca.id) as ad_count,
-                SUM(cm.impressions) as total_impressions,
-                AVG(cm.dwell_time) as avg_dwell_time,
-                SUM(cm.circulation) as total_circulation,
-                SUM(cm.revenue) as total_revenue
+                COUNT(DISTINCT cv.id) as video_count,
+                COUNT(DISTINCT CASE WHEN cv.status = 'activated' THEN cv.id END) as activated_count,
+                SUM(vm.impressions) as total_impressions,
+                AVG(vm.dwell_time_seconds) as avg_dwell_time,
+                SUM(vm.circulation) as total_circulation,
+                SUM(vm.revenue) as total_revenue
             FROM campaigns c
-            LEFT JOIN campaign_ads ca ON c.id = ca.campaign_id
-            LEFT JOIN campaign_metrics cm ON c.id = cm.campaign_id
+            LEFT JOIN campaign_videos cv ON c.id = cv.campaign_id
+            LEFT JOIN video_metrics vm ON cv.id = vm.video_id AND cv.status = 'activated'
             GROUP BY c.id
             ORDER BY total_revenue DESC
         ''')
@@ -427,7 +967,8 @@ async def generate_map_visualization(
             "coords": coords,
             "region": region,
             "status": camp['status'],
-            "ad_count": camp['ad_count'] or 0,
+            "video_count": camp['video_count'] or 0,
+            "activated_videos": camp['activated_count'] or 0,
             "revenue": revenue,
             "impressions": impressions,
             "dwell_time": dwell_time,
@@ -727,7 +1268,7 @@ Create a visually striking revenue heatmap suitable for executive dashboards."""
         client = genai.Client()
 
         response = client.models.generate_content(
-            model="gemini-3-pro-image-preview",
+            model=IMAGE_GENERATION,
             contents=[visualization_prompt],
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
@@ -757,7 +1298,7 @@ Create a visually striking revenue heatmap suitable for executive dashboards."""
 
         # Save as ADK artifact
         timestamp = int(time.time())
-        filename = f"map_{visualization_type}_{metric}_{timestamp}.png"
+        filename = f"map_{visualization_type}_{style}_{metric}_{timestamp}.png"
 
         print(f"[DEBUG MAP VIZ] Step 7: Saving artifact...")
         if tool_context:
@@ -776,10 +1317,11 @@ Create a visually striking revenue heatmap suitable for executive dashboards."""
 
         return {
             "status": "success",
-            "message": f"Generated {visualization_type} map visualization",
+            "message": f"Generated {visualization_type} map visualization in {style} style",
             "visualization": {
                 "type": visualization_type,
                 "metric": metric,
+                "style": style,
                 "filename": filename,
                 "artifact_saved": artifact_saved,
                 "artifact_version": version,

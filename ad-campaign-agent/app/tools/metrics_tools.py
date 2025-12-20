@@ -23,6 +23,147 @@ from google.genai import types
 from google.adk.tools import ToolContext
 
 from ..database.db import get_db_cursor
+from ..config import IMAGE_GENERATION
+
+
+# =============================================================================
+# Chart Prompt Templates (Anti-Hallucination)
+# =============================================================================
+# These templates ensure AI generates charts with ONLY the provided data values.
+# Explicit "DO NOT invent" clauses prevent fabricated data points.
+
+CHART_TEMPLATES = {
+    "trendline": """Create a professional line chart visualization.
+
+=== REQUIRED LAYOUT (16:9 aspect ratio) ===
+1. CHART AREA (80% of image)
+   - Title: "{campaign_name} - {metric_display} Trend"
+   - X-Axis: Dates from {start_date} to {end_date}
+   - Y-Axis: {metric_display} ({value_format})
+   - Subtitle: "Last {days} days"
+
+2. DATA LINE
+   - Smooth curve connecting exact data points
+   - Dark blue line (#2563eb) with gradient fill below
+   - Data points (MUST use these exact values):
+{data_points_formatted}
+
+3. STATISTICS PANEL (bottom right corner)
+   - Average: {avg_val}
+   - Peak: {max_val}
+   - Low: {min_val}
+   - Trend: {trend}
+
+=== STYLE REQUIREMENTS ===
+- Modern dashboard aesthetic
+- White/light gray background
+- Sans-serif font (Roboto/Inter style)
+- Subtle grid lines
+- Small circular data point markers
+
+=== STRICT DATA RULES ===
+- Use ONLY the {num_points} data values provided above
+- Do NOT invent, estimate, or interpolate any numbers
+- The line must pass through EXACTLY these data points
+- 16:9 aspect ratio, high resolution
+- Professional business visualization quality
+""",
+
+    "bar_chart": """Create a professional bar chart visualization.
+
+=== REQUIRED LAYOUT (16:9 aspect ratio) ===
+1. CHART AREA
+   - Title: "{campaign_name} - Weekly {metric_display}"
+   - X-Axis: Week labels
+   - Y-Axis: {metric_display}
+
+2. BAR DATA (MUST use these exact values):
+{weekly_data_formatted}
+
+3. STYLE
+   - Modern gradient bars (blue to purple)
+   - Value labels above each bar
+   - White background
+   - Subtle shadows for depth
+
+=== STRICT DATA RULES ===
+- Create exactly {num_bars} bars with the values above
+- Do NOT add extra weeks or estimate values
+- Each bar height must represent its exact value
+- 16:9 aspect ratio
+""",
+
+    "comparison": """Create a multi-metric KPI dashboard card.
+
+=== REQUIRED LAYOUT (16:9 aspect ratio) ===
+1. HEADER
+   - Campaign: "{campaign_name}"
+   - Period: Last {days} days
+   - Context: In-Store Retail Media
+
+2. METRIC BOXES (2x2 grid) - EXACT VALUES:
+   - Box 1 (PRIMARY - highlight in blue):
+     Label: "Revenue Per Impression (RPI)"
+     Value: ${rpi:.4f}
+   - Box 2:
+     Label: "Total Impressions"
+     Value: {impressions:,}
+   - Box 3:
+     Label: "Avg Dwell Time"
+     Value: {dwell_time:.1f}s
+   - Box 4:
+     Label: "Total Circulation"
+     Value: {circulation:,}
+
+3. STYLE
+   - Clean dashboard card layout
+   - RPI box prominently highlighted (larger, blue accent)
+   - White background with subtle shadows
+   - Large, bold numbers
+   - Trend arrows where applicable
+
+=== STRICT DATA RULES ===
+- Display ONLY the 4 metric values provided above
+- Do NOT calculate or invent any other numbers
+- RPI is the PRIMARY metric - make it most prominent
+- 16:9 aspect ratio
+""",
+
+    "infographic": """Create a comprehensive visual infographic.
+
+=== REQUIRED LAYOUT (16:9 aspect ratio) ===
+1. HEADER SECTION
+   - Campaign: "{campaign_name}"
+   - Period: Last {days} days - {trend} trend
+   - Context: In-Store Retail Media Analytics
+
+2. PRIMARY METRIC (prominent center-left)
+   - {metric_display}: {primary_value}
+   - Range: {value_format}
+
+3. PERFORMANCE METRICS (right panel)
+   - RPI: ${rpi:.4f} (PRIMARY KPI - highlight)
+   - Impressions: {impressions:,}
+   - Dwell Time: {dwell_time:.1f}s
+   - Circulation: {circulation:,}
+
+4. MINI TREND CHART (bottom)
+   - {num_points} data points showing {metric_display}
+   - Indicate {trend} direction with arrow
+
+5. STYLE
+   - Magazine-quality data visualization
+   - Professional blues, teals, and accents
+   - Mix of icons, numbers, and mini charts
+   - Modern flat design with subtle gradients
+
+=== STRICT DATA RULES ===
+- Use ONLY the exact values provided above
+- Do NOT invent statistics or additional metrics
+- All numbers must match the data provided exactly
+- 16:9 aspect ratio, presentation quality
+"""
+}
 
 
 def get_campaign_metrics(campaign_id: int, days: int = 30) -> dict:
@@ -30,6 +171,9 @@ def get_campaign_metrics(campaign_id: int, days: int = 30) -> dict:
 
     Returns daily and aggregated in-store retail media metrics including
     impressions, dwell time, circulation, and revenue per impression (RPI).
+
+    Uses NEW schema: video_metrics + campaign_videos (HITL workflow).
+    Metrics only exist for activated videos.
 
     Args:
         campaign_id: The ID of the campaign
@@ -49,46 +193,51 @@ def get_campaign_metrics(campaign_id: int, days: int = 30) -> dict:
                 "message": f"Campaign with ID {campaign_id} not found"
             }
 
-        # Get daily metrics (in-store retail media)
+        # Get daily metrics from video_metrics (NEW schema)
+        # Only includes activated videos
         cursor.execute('''
             SELECT
-                date,
-                SUM(impressions) as impressions,
-                AVG(dwell_time) as avg_dwell_time,
-                SUM(circulation) as circulation,
-                SUM(revenue) as revenue
-            FROM campaign_metrics
-            WHERE campaign_id = ?
-            AND date >= date('now', ?)
-            GROUP BY date
-            ORDER BY date DESC
+                vm.metric_date as date,
+                SUM(vm.impressions) as impressions,
+                AVG(vm.dwell_time_seconds) as avg_dwell_time,
+                SUM(vm.circulation) as circulation,
+                SUM(vm.revenue) as revenue
+            FROM video_metrics vm
+            JOIN campaign_videos cv ON vm.video_id = cv.id
+            WHERE cv.campaign_id = ?
+              AND cv.status = 'activated'
+              AND vm.metric_date >= date('now', ?)
+            GROUP BY vm.metric_date
+            ORDER BY vm.metric_date DESC
         ''', (campaign_id, f'-{days} days'))
 
         daily_metrics = []
         for row in cursor.fetchall():
-            impressions = int(row["impressions"])
-            revenue = round(row["revenue"], 2)
+            impressions = int(row["impressions"]) if row["impressions"] else 0
+            revenue = round(row["revenue"], 2) if row["revenue"] else 0
             # Compute RPI on the fly (THE key metric)
             rpi = round(revenue / impressions, 4) if impressions > 0 else 0
 
             daily_metrics.append({
                 "date": row["date"],
                 "impressions": impressions,
-                "dwell_time": round(row["avg_dwell_time"], 1),
-                "circulation": int(row["circulation"]),
+                "dwell_time": round(row["avg_dwell_time"], 1) if row["avg_dwell_time"] else 0,
+                "circulation": int(row["circulation"]) if row["circulation"] else 0,
                 "revenue_per_impression": rpi
             })
 
-        # Get aggregated totals
+        # Get aggregated totals from video_metrics (NEW schema)
         cursor.execute('''
             SELECT
-                SUM(impressions) as total_impressions,
-                AVG(dwell_time) as avg_dwell_time,
-                SUM(circulation) as total_circulation,
-                SUM(revenue) as total_revenue
-            FROM campaign_metrics
-            WHERE campaign_id = ?
-            AND date >= date('now', ?)
+                SUM(vm.impressions) as total_impressions,
+                AVG(vm.dwell_time_seconds) as avg_dwell_time,
+                SUM(vm.circulation) as total_circulation,
+                SUM(vm.revenue) as total_revenue
+            FROM video_metrics vm
+            JOIN campaign_videos cv ON vm.video_id = cv.id
+            WHERE cv.campaign_id = ?
+              AND cv.status = 'activated'
+              AND vm.metric_date >= date('now', ?)
         ''', (campaign_id, f'-{days} days'))
 
         totals = cursor.fetchone()
@@ -96,20 +245,27 @@ def get_campaign_metrics(campaign_id: int, days: int = 30) -> dict:
         summary = None
         if totals and totals["total_impressions"]:
             total_impressions = int(totals["total_impressions"])
-            total_revenue = round(totals["total_revenue"], 2)
+            total_revenue = round(totals["total_revenue"], 2) if totals["total_revenue"] else 0
             # RPI is THE key metric for retail media
             rpi = round(total_revenue / total_impressions, 4) if total_impressions > 0 else 0
 
             summary = {
                 "total_impressions": total_impressions,
-                "average_dwell_time": round(totals["avg_dwell_time"], 1),
-                "total_circulation": int(totals["total_circulation"]),
+                "average_dwell_time": round(totals["avg_dwell_time"], 1) if totals["avg_dwell_time"] else 0,
+                "total_circulation": int(totals["total_circulation"]) if totals["total_circulation"] else 0,
                 "total_revenue": total_revenue,
                 "revenue_per_impression": rpi,
                 "revenue_per_1000_impressions": round(rpi * 1000, 2)  # CPM equivalent
             }
 
-        print(f"[DEBUG get_campaign_metrics] Found {len(daily_metrics)} daily records")
+        # Get count of activated videos
+        cursor.execute('''
+            SELECT COUNT(*) as count FROM campaign_videos
+            WHERE campaign_id = ? AND status = 'activated'
+        ''', (campaign_id,))
+        video_count = cursor.fetchone()["count"]
+
+        print(f"[DEBUG get_campaign_metrics] Found {len(daily_metrics)} daily records from {video_count} activated videos")
         print(f"[DEBUG get_campaign_metrics] Summary: {summary}")
         return {
             "status": "success",
@@ -118,17 +274,20 @@ def get_campaign_metrics(campaign_id: int, days: int = 30) -> dict:
                 "name": campaign["name"],
                 "status": campaign["status"]
             },
+            "activated_videos": video_count,
             "period": f"last_{days}_days",
             "summary": summary,
-            "daily_metrics": daily_metrics
+            "daily_metrics": daily_metrics,
+            "note": "Metrics only available for activated videos. Use Review Agent to activate pending videos." if not summary else None
         }
 
 
 def get_top_performing_ads(metric: str = "revenue_per_impression", limit: int = 5) -> dict:
-    """Get top performing ads across all campaigns.
+    """Get top performing video ads across all campaigns.
 
     Identifies the best ads and their key characteristics for insights.
-    Uses in-store retail media metrics.
+    Uses NEW schema: video_metrics + campaign_videos + products (HITL workflow).
+    Only includes activated videos.
 
     Args:
         metric: Metric to rank by - one of: revenue_per_impression, impressions, dwell_time, circulation
@@ -147,43 +306,48 @@ def get_top_performing_ads(metric: str = "revenue_per_impression", limit: int = 
 
     # RPI must be computed, not a direct column
     metric_column_map = {
-        "revenue_per_impression": "SUM(cm.revenue) / NULLIF(SUM(cm.impressions), 0)",
-        "impressions": "SUM(cm.impressions)",
-        "dwell_time": "AVG(cm.dwell_time)",
-        "circulation": "SUM(cm.circulation)"
+        "revenue_per_impression": "SUM(vm.revenue) / NULLIF(SUM(vm.impressions), 0)",
+        "impressions": "SUM(vm.impressions)",
+        "dwell_time": "AVG(vm.dwell_time_seconds)",
+        "circulation": "SUM(vm.circulation)"
     }
 
     with get_db_cursor() as cursor:
         cursor.execute(f'''
             SELECT
-                ca.id as ad_id,
+                cv.id as video_id,
                 c.id as campaign_id,
                 c.name as campaign_name,
                 c.category,
                 c.city,
                 c.state,
-                ca.prompt_used,
-                ci.image_path,
-                ci.metadata,
+                cv.video_filename,
+                cv.variation_name,
+                cv.variation_params,
+                p.name as product_name,
+                p.category as product_category,
+                p.color as product_color,
+                p.style as product_style,
                 {metric_column_map[metric]} as metric_value,
-                SUM(cm.impressions) as total_impressions,
-                AVG(cm.dwell_time) as avg_dwell_time,
-                SUM(cm.circulation) as total_circulation,
-                SUM(cm.revenue) as total_revenue
-            FROM campaign_ads ca
-            JOIN campaigns c ON ca.campaign_id = c.id
-            LEFT JOIN campaign_images ci ON ca.image_id = ci.id
-            LEFT JOIN campaign_metrics cm ON ca.id = cm.ad_id
-            WHERE ca.status = 'completed'
-            GROUP BY ca.id
-            HAVING metric_value IS NOT NULL
+                SUM(vm.impressions) as total_impressions,
+                AVG(vm.dwell_time_seconds) as avg_dwell_time,
+                SUM(vm.circulation) as total_circulation,
+                SUM(vm.revenue) as total_revenue
+            FROM campaign_videos cv
+            JOIN campaigns c ON cv.campaign_id = c.id
+            LEFT JOIN products p ON cv.product_id = p.id
+            LEFT JOIN video_metrics vm ON cv.id = vm.video_id
+            WHERE cv.status = 'activated'
+            GROUP BY cv.id
+            HAVING metric_value IS NOT NULL AND total_revenue > 0
             ORDER BY metric_value DESC
             LIMIT ?
         ''', (limit,))
 
         top_ads = []
         for row in cursor.fetchall():
-            metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+            # Parse variation_params for characteristics
+            variation_params = json.loads(row["variation_params"]) if row["variation_params"] else {}
             total_impressions = int(row["total_impressions"]) if row["total_impressions"] else 0
             total_revenue = round(row["total_revenue"], 2) if row["total_revenue"] else 0
             # Compute RPI
@@ -191,12 +355,18 @@ def get_top_performing_ads(metric: str = "revenue_per_impression", limit: int = 
 
             top_ads.append({
                 "rank": len(top_ads) + 1,
-                "ad_id": row["ad_id"],
+                "video_id": row["video_id"],
                 "campaign": {
                     "id": row["campaign_id"],
                     "name": row["campaign_name"],
                     "category": row["category"],
                     "location": f"{row['city']}, {row['state']}"
+                },
+                "product": {
+                    "name": row["product_name"],
+                    "category": row["product_category"],
+                    "color": row["product_color"],
+                    "style": row["product_style"]
                 },
                 "metrics": {
                     f"{metric}": round(row["metric_value"], 4) if row["metric_value"] else 0,
@@ -206,27 +376,29 @@ def get_top_performing_ads(metric: str = "revenue_per_impression", limit: int = 
                     "revenue_per_impression": rpi
                 },
                 "characteristics": {
-                    "model": metadata.get("model_description", "Unknown"),
-                    "setting": metadata.get("setting_description", "Unknown"),
-                    "garment": metadata.get("garment_type", "Unknown"),
-                    "mood": metadata.get("mood", "Unknown"),
-                    "key_feature": metadata.get("key_feature", "Unknown")
+                    "variation": row["variation_name"],
+                    "model_ethnicity": variation_params.get("model_ethnicity", "Unknown"),
+                    "setting": variation_params.get("setting", "Unknown"),
+                    "mood": variation_params.get("mood", "Unknown"),
+                    "lighting": variation_params.get("lighting", "Unknown"),
+                    "time_of_day": variation_params.get("time_of_day", "Unknown")
                 },
-                "source_image": row["image_path"]
+                "video_filename": row["video_filename"]
             })
 
         # Extract common characteristics from top performers
         common_traits = {}
         if top_ads:
-            for trait in ["garment", "mood", "setting"]:
-                values = [ad["characteristics"].get(trait, "") for ad in top_ads if ad["characteristics"].get(trait)]
+            for trait in ["setting", "mood", "model_ethnicity"]:
+                values = [ad["characteristics"].get(trait, "") for ad in top_ads
+                         if ad["characteristics"].get(trait) and ad["characteristics"].get(trait) != "Unknown"]
                 if values:
                     from collections import Counter
                     most_common = Counter(values).most_common(1)
                     if most_common:
                         common_traits[trait] = most_common[0][0]
 
-        print(f"[DEBUG get_top_performing_ads] Found {len(top_ads)} top ads")
+        print(f"[DEBUG get_top_performing_ads] Found {len(top_ads)} top video ads")
         print(f"[DEBUG get_top_performing_ads] Common traits: {common_traits}")
         return {
             "status": "success",
@@ -234,8 +406,9 @@ def get_top_performing_ads(metric: str = "revenue_per_impression", limit: int = 
             "top_ads": top_ads,
             "insights": {
                 "common_characteristics": common_traits,
-                "recommendation": f"Top performers share these traits: {', '.join(common_traits.values())}" if common_traits else "Insufficient data for recommendations"
-            }
+                "recommendation": f"Top performers share these traits: {', '.join(f'{k}={v}' for k, v in common_traits.items())}" if common_traits else "Insufficient data for recommendations"
+            },
+            "note": "Rankings based on activated videos only. Use Review Agent to activate pending videos."
         }
 
 
@@ -243,7 +416,8 @@ def get_campaign_insights(campaign_id: int) -> dict:
     """Get AI-generated insights about campaign performance.
 
     Analyzes campaign data and identifies key patterns and recommendations.
-    Uses in-store retail media metrics.
+    Uses NEW schema: video_metrics + campaign_videos (HITL workflow).
+    Only includes activated videos.
 
     Args:
         campaign_id: The ID of the campaign
@@ -262,15 +436,45 @@ def get_campaign_insights(campaign_id: int) -> dict:
                 "message": f"Campaign with ID {campaign_id} not found"
             }
 
+        # Check if there are activated videos
+        cursor.execute('''
+            SELECT COUNT(*) as count FROM campaign_videos
+            WHERE campaign_id = ? AND status = 'activated'
+        ''', (campaign_id,))
+        activated_count = cursor.fetchone()["count"]
+
+        if activated_count == 0:
+            return {
+                "status": "success",
+                "campaign": {
+                    "id": campaign["id"],
+                    "name": campaign["name"],
+                    "category": campaign["category"],
+                    "status": campaign["status"]
+                },
+                "performance_trend": "no_data",
+                "insights": ["No activated videos yet. Use Review Agent to activate pending videos."],
+                "recommendations": [
+                    "Generate videos using Media Agent",
+                    "Review and activate videos using Review Agent",
+                    "Metrics will appear after activation"
+                ],
+                "best_day": None,
+                "worst_day": None,
+                "note": "Metrics only available for activated videos."
+            }
+
         # Get performance trend (weekly aggregates) - using RPI as key metric
         cursor.execute('''
             SELECT
-                strftime('%Y-W%W', date) as week,
-                SUM(impressions) as impressions,
-                SUM(revenue) as revenue,
-                AVG(dwell_time) as avg_dwell
-            FROM campaign_metrics
-            WHERE campaign_id = ?
+                strftime('%Y-W%W', vm.metric_date) as week,
+                SUM(vm.impressions) as impressions,
+                SUM(vm.revenue) as revenue,
+                AVG(vm.dwell_time_seconds) as avg_dwell
+            FROM video_metrics vm
+            JOIN campaign_videos cv ON vm.video_id = cv.id
+            WHERE cv.campaign_id = ?
+              AND cv.status = 'activated'
             GROUP BY week
             ORDER BY week
         ''', (campaign_id,))
@@ -279,51 +483,57 @@ def get_campaign_insights(campaign_id: int) -> dict:
 
         trend = "stable"
         if len(weeks) >= 2:
-            first_half_rev = sum(w["revenue"] for w in weeks[:len(weeks)//2])
-            second_half_rev = sum(w["revenue"] for w in weeks[len(weeks)//2:])
-            if second_half_rev > first_half_rev * 1.1:
+            first_half_rev = sum(w["revenue"] for w in weeks[:len(weeks)//2] if w["revenue"])
+            second_half_rev = sum(w["revenue"] for w in weeks[len(weeks)//2:] if w["revenue"])
+            if first_half_rev > 0 and second_half_rev > first_half_rev * 1.1:
                 trend = "improving"
-            elif second_half_rev < first_half_rev * 0.9:
+            elif first_half_rev > 0 and second_half_rev < first_half_rev * 0.9:
                 trend = "declining"
 
         # Get best and worst performing days by RPI
         cursor.execute('''
-            SELECT date, revenue, impressions, dwell_time,
-                   revenue * 1.0 / NULLIF(impressions, 0) as rpi
-            FROM campaign_metrics
-            WHERE campaign_id = ?
+            SELECT vm.metric_date as date, vm.revenue, vm.impressions, vm.dwell_time_seconds,
+                   vm.revenue * 1.0 / NULLIF(vm.impressions, 0) as rpi
+            FROM video_metrics vm
+            JOIN campaign_videos cv ON vm.video_id = cv.id
+            WHERE cv.campaign_id = ?
+              AND cv.status = 'activated'
             ORDER BY rpi DESC
             LIMIT 1
         ''', (campaign_id,))
         best_day = cursor.fetchone()
 
         cursor.execute('''
-            SELECT date, revenue, impressions, dwell_time,
-                   revenue * 1.0 / NULLIF(impressions, 0) as rpi
-            FROM campaign_metrics
-            WHERE campaign_id = ?
+            SELECT vm.metric_date as date, vm.revenue, vm.impressions, vm.dwell_time_seconds,
+                   vm.revenue * 1.0 / NULLIF(vm.impressions, 0) as rpi
+            FROM video_metrics vm
+            JOIN campaign_videos cv ON vm.video_id = cv.id
+            WHERE cv.campaign_id = ?
+              AND cv.status = 'activated'
+              AND vm.impressions > 0
             ORDER BY rpi ASC
             LIMIT 1
         ''', (campaign_id,))
         worst_day = cursor.fetchone()
 
-        # Get ad performance comparison
+        # Get video performance comparison
         cursor.execute('''
             SELECT
-                ca.id,
-                ci.metadata,
-                SUM(cm.revenue) as total_revenue,
-                SUM(cm.impressions) as total_impressions,
-                AVG(cm.dwell_time) as avg_dwell
-            FROM campaign_ads ca
-            LEFT JOIN campaign_images ci ON ca.image_id = ci.id
-            LEFT JOIN campaign_metrics cm ON ca.id = cm.ad_id
-            WHERE ca.campaign_id = ?
-            GROUP BY ca.id
+                cv.id,
+                cv.variation_name,
+                cv.variation_params,
+                SUM(vm.revenue) as total_revenue,
+                SUM(vm.impressions) as total_impressions,
+                AVG(vm.dwell_time_seconds) as avg_dwell
+            FROM campaign_videos cv
+            LEFT JOIN video_metrics vm ON cv.id = vm.video_id
+            WHERE cv.campaign_id = ?
+              AND cv.status = 'activated'
+            GROUP BY cv.id
             ORDER BY total_revenue DESC
         ''', (campaign_id,))
 
-        ad_performances = cursor.fetchall()
+        video_performances = cursor.fetchall()
 
         # Generate insights
         insights = []
@@ -332,18 +542,32 @@ def get_campaign_insights(campaign_id: int) -> dict:
             insights.append("Campaign RPI is trending upward - consider increasing budget")
         elif trend == "declining":
             insights.append("Campaign RPI is declining - review creative and placement")
+        else:
+            insights.append("Campaign performance is stable")
 
         if best_day:
             rpi = round(best_day["rpi"], 4) if best_day["rpi"] else 0
-            insights.append(f"Best performing day: {best_day['date']} (RPI: ${rpi:.4f}, Dwell: {best_day['dwell_time']:.1f}s)")
+            dwell = round(best_day["dwell_time_seconds"], 1) if best_day["dwell_time_seconds"] else 0
+            insights.append(f"Best performing day: {best_day['date']} (RPI: ${rpi:.4f}, Dwell: {dwell}s)")
 
-        if ad_performances:
-            best_ad = ad_performances[0]
-            if best_ad["total_impressions"] and best_ad["total_impressions"] > 0:
-                ad_rpi = round(best_ad["total_revenue"] / best_ad["total_impressions"], 4)
-                if best_ad["metadata"]:
-                    metadata = json.loads(best_ad["metadata"])
-                    insights.append(f"Top performer (RPI: ${ad_rpi:.4f}): {metadata.get('mood', 'N/A')} mood, avg dwell {best_ad['avg_dwell']:.1f}s")
+        if video_performances:
+            best_video = video_performances[0]
+            if best_video["total_impressions"] and best_video["total_impressions"] > 0:
+                video_rpi = round(best_video["total_revenue"] / best_video["total_impressions"], 4)
+                variation = best_video["variation_name"] or "default"
+                avg_dwell = round(best_video["avg_dwell"], 1) if best_video["avg_dwell"] else 0
+                insights.append(f"Top video (RPI: ${video_rpi:.4f}): {variation} variation, avg dwell {avg_dwell}s")
+
+                # Extract characteristics from variation_params
+                if best_video["variation_params"]:
+                    params = json.loads(best_video["variation_params"])
+                    traits = []
+                    if params.get("setting"):
+                        traits.append(f"setting={params['setting']}")
+                    if params.get("mood"):
+                        traits.append(f"mood={params['mood']}")
+                    if traits:
+                        insights.append(f"Winning characteristics: {', '.join(traits)}")
 
         print(f"[DEBUG get_campaign_insights] Trend: {trend}, Insights: {len(insights)} items")
         return {
@@ -354,10 +578,11 @@ def get_campaign_insights(campaign_id: int) -> dict:
                 "category": campaign["category"],
                 "status": campaign["status"]
             },
+            "activated_videos": activated_count,
             "performance_trend": trend,
             "insights": insights,
             "recommendations": [
-                "Consider generating variations of top-performing ads",
+                "Consider generating variations of top-performing videos",
                 "Test different settings and moods based on successful patterns",
                 "Review dwell time patterns by time of week"
             ] if trend != "improving" else [
@@ -369,13 +594,13 @@ def get_campaign_insights(campaign_id: int) -> dict:
                 "date": best_day["date"],
                 "revenue_per_impression": round(best_day["rpi"], 4) if best_day["rpi"] else 0,
                 "impressions": int(best_day["impressions"]),
-                "dwell_time": round(best_day["dwell_time"], 1)
+                "dwell_time": round(best_day["dwell_time_seconds"], 1) if best_day["dwell_time_seconds"] else 0
             } if best_day else None,
             "worst_day": {
                 "date": worst_day["date"],
                 "revenue_per_impression": round(worst_day["rpi"], 4) if worst_day["rpi"] else 0,
                 "impressions": int(worst_day["impressions"]),
-                "dwell_time": round(worst_day["dwell_time"], 1)
+                "dwell_time": round(worst_day["dwell_time_seconds"], 1) if worst_day["dwell_time_seconds"] else 0
             } if worst_day else None
         }
 
@@ -385,6 +610,9 @@ def compare_campaigns(campaign_ids: List[int]) -> dict:
 
     Compares in-store retail media metrics including impressions, dwell time,
     circulation, and revenue per impression (RPI).
+
+    Uses NEW schema: video_metrics + campaign_videos (HITL workflow).
+    Only includes activated videos.
 
     Args:
         campaign_ids: List of campaign IDs to compare
@@ -411,14 +639,15 @@ def compare_campaigns(campaign_ids: List[int]) -> dict:
                     c.city,
                     c.state,
                     c.status,
-                    COUNT(DISTINCT ca.id) as ad_count,
-                    SUM(cm.impressions) as total_impressions,
-                    AVG(cm.dwell_time) as avg_dwell_time,
-                    SUM(cm.circulation) as total_circulation,
-                    SUM(cm.revenue) as total_revenue
+                    COUNT(DISTINCT cv.id) as video_count,
+                    COUNT(DISTINCT CASE WHEN cv.status = 'activated' THEN cv.id END) as activated_count,
+                    SUM(vm.impressions) as total_impressions,
+                    AVG(vm.dwell_time_seconds) as avg_dwell_time,
+                    SUM(vm.circulation) as total_circulation,
+                    SUM(vm.revenue) as total_revenue
                 FROM campaigns c
-                LEFT JOIN campaign_ads ca ON c.id = ca.campaign_id
-                LEFT JOIN campaign_metrics cm ON c.id = cm.campaign_id
+                LEFT JOIN campaign_videos cv ON c.id = cv.campaign_id
+                LEFT JOIN video_metrics vm ON cv.id = vm.video_id AND cv.status = 'activated'
                 WHERE c.id = ?
                 GROUP BY c.id
             ''', (cid,))
@@ -436,7 +665,8 @@ def compare_campaigns(campaign_ids: List[int]) -> dict:
                     "category": row["category"],
                     "location": f"{row['city']}, {row['state']}",
                     "status": row["status"],
-                    "ad_count": row["ad_count"] or 0,
+                    "video_count": row["video_count"] or 0,
+                    "activated_videos": row["activated_count"] or 0,
                     "metrics": {
                         "total_impressions": total_impressions,
                         "average_dwell_time": round(row["avg_dwell_time"], 1) if row["avg_dwell_time"] else 0,
@@ -466,6 +696,9 @@ def compare_campaigns(campaign_ids: List[int]) -> dict:
         # Find best performer by RPI
         best = ranked_by_rpi[0]
 
+        # Check if any campaigns have no metrics
+        no_metrics = [c for c in comparisons if c["metrics"]["total_impressions"] == 0]
+
         print(f"[DEBUG compare_campaigns] Compared {len(comparisons)} campaigns")
         print(f"[DEBUG compare_campaigns] Best performer: {best['name']}")
         return {
@@ -476,9 +709,11 @@ def compare_campaigns(campaign_ids: List[int]) -> dict:
                 "by_rpi": best["name"],
                 "campaign_id": best["campaign_id"],
                 "revenue_per_impression": best["metrics"]["revenue_per_impression"],
-                "total_revenue": best["metrics"]["total_revenue"]
+                "total_revenue": best["metrics"]["total_revenue"],
+                "activated_videos": best["activated_videos"]
             },
-            "summary": f"Compared {len(comparisons)} campaigns. '{best['name']}' leads with RPI of ${best['metrics']['revenue_per_impression']:.4f} (${best['metrics']['total_revenue']:.2f} total revenue)."
+            "summary": f"Compared {len(comparisons)} campaigns. '{best['name']}' leads with RPI of ${best['metrics']['revenue_per_impression']:.4f} (${best['metrics']['total_revenue']:.2f} total revenue).",
+            "note": f"{len(no_metrics)} campaign(s) have no metrics yet. Activate videos using Review Agent." if no_metrics else None
         }
 
 
@@ -617,35 +852,56 @@ async def generate_metrics_visualization(
 
     print(f"[DEBUG VIZ]   - Display format: {metric_display}, range: {value_format}")
 
-    # Build the visualization prompt based on chart type
-    print(f"[DEBUG VIZ] Step 5: Building prompt for chart_type='{chart_type}'...")
+    # Build the visualization prompt using structured templates
+    print(f"[DEBUG VIZ] Step 5: Building prompt from CHART_TEMPLATES for chart_type='{chart_type}'...")
+
+    # Prepare common template variables
+    template_vars = {
+        "campaign_name": campaign_name,
+        "metric_display": metric_display,
+        "days": days,
+        "value_format": value_format,
+        "trend": trend,
+        "num_points": len(data_points),
+        "rpi": summary['revenue_per_impression'],
+        "impressions": summary['total_impressions'],
+        "dwell_time": summary['average_dwell_time'],
+        "circulation": summary['total_circulation'],
+    }
 
     if chart_type == "trendline":
-        visualization_prompt = f"""Create a professional, clean line chart infographic showing:
+        # Format data points for template
+        data_points_formatted = "\n".join([
+            f"   - {dp['date']}: {dp['value']:.4f}" if metric == "revenue_per_impression"
+            else f"   - {dp['date']}: {dp['value']:.1f}" if metric == "dwell_time"
+            else f"   - {dp['date']}: {int(dp['value']):,}"
+            for dp in data_points
+        ])
 
-CHART SPECIFICATIONS:
-- Title: "{campaign_name} - {metric_display} Trend"
-- Chart Type: Line chart with smooth curve
-- X-Axis: Time period ({len(data_points)} days)
-- Y-Axis: {metric_display}
-- Data Range: {value_format}
-- Trend: {trend}
+        # Format statistics based on metric type
+        if metric == "revenue_per_impression":
+            avg_formatted = f"${avg_val:.4f}"
+            max_formatted = f"${max_val:.4f}"
+            min_formatted = f"${min_val:.4f}"
+        elif metric == "dwell_time":
+            avg_formatted = f"{avg_val:.1f}s"
+            max_formatted = f"{max_val:.1f}s"
+            min_formatted = f"{min_val:.1f}s"
+        else:
+            avg_formatted = f"{int(avg_val):,}"
+            max_formatted = f"{int(max_val):,}"
+            min_formatted = f"{int(min_val):,}"
 
-STYLE:
-- Modern, minimalist business dashboard style
-- Dark blue or teal line on white/light gray background
-- Gradient fill under the line
-- Clean sans-serif font (like Roboto or Inter)
-- Subtle grid lines
-- Rounded corners on the chart container
-- Small data point markers
+        template_vars.update({
+            "start_date": data_points[0]["date"],
+            "end_date": data_points[-1]["date"],
+            "data_points_formatted": data_points_formatted,
+            "avg_val": avg_formatted,
+            "max_val": max_formatted,
+            "min_val": min_formatted,
+        })
 
-KEY STATISTICS TO SHOW:
-- Average: {avg_val:.2f}
-- Peak: {max_val:.2f}
-- Trend arrow indicating {trend}
-
-Make it look like a professional analytics dashboard widget. High quality, crisp, suitable for business presentation."""
+        visualization_prompt = CHART_TEMPLATES["trendline"].format(**template_vars)
 
     elif chart_type == "bar_chart":
         # Get weekly aggregates for bar chart
@@ -659,97 +915,56 @@ Make it look like a professional analytics dashboard widget. High quality, crisp
                 weekly_data.append({"week": f"Week {len(weekly_data)+1}", "value": week_total})
                 print(f"[DEBUG VIZ]     Week {len(weekly_data)}: {len(week_slice)} days, total={week_total:.2f}")
 
-        visualization_prompt = f"""Create a professional bar chart infographic showing:
+        # Format weekly data for template
+        if metric == "revenue_per_impression":
+            weekly_data_formatted = "\n".join([
+                f"   - {w['week']}: ${w['value']:.4f}" for w in weekly_data
+            ])
+        elif metric == "dwell_time":
+            weekly_data_formatted = "\n".join([
+                f"   - {w['week']}: {w['value']:.1f}s" for w in weekly_data
+            ])
+        else:
+            weekly_data_formatted = "\n".join([
+                f"   - {w['week']}: {int(w['value']):,}" for w in weekly_data
+            ])
 
-CHART SPECIFICATIONS:
-- Title: "{campaign_name} - Weekly {metric_display}"
-- Chart Type: Vertical bar chart
-- Number of bars: {len(weekly_data)} weeks
-- Y-Axis: {metric_display}
-- Data Range: {value_format}
+        template_vars.update({
+            "weekly_data_formatted": weekly_data_formatted,
+            "num_bars": len(weekly_data),
+        })
 
-STYLE:
-- Modern gradient bars (blue to purple or teal to blue)
-- White/light gray background
-- Each bar slightly rounded at top
-- Clean sans-serif typography
-- Value labels above each bar
-- Subtle drop shadows for depth
-
-WEEKLY VALUES:
-{json.dumps(weekly_data, indent=2)}
-
-Make it look like a polished business analytics chart. Professional, clean, high resolution."""
+        visualization_prompt = CHART_TEMPLATES["bar_chart"].format(**template_vars)
 
     elif chart_type == "comparison":
-        # Create a comparison with multiple metrics (in-store retail media)
+        # Log the exact values being sent
         print(f"[DEBUG VIZ]   - Comparison chart using summary metrics:")
         print(f"[DEBUG VIZ]     RPI: ${summary['revenue_per_impression']:.4f}")
         print(f"[DEBUG VIZ]     Impressions: {summary['total_impressions']:,}")
         print(f"[DEBUG VIZ]     Dwell Time: {summary['average_dwell_time']:.1f}s")
         print(f"[DEBUG VIZ]     Circulation: {summary['total_circulation']:,}")
-        visualization_prompt = f"""Create a professional multi-metric comparison infographic for:
 
-CAMPAIGN: "{campaign_name}"
-TIME PERIOD: Last {days} days
-CONTEXT: In-Store Retail Media Network
-
-KEY METRICS TO DISPLAY:
-- Revenue Per Impression (RPI): ${summary['revenue_per_impression']:.4f} (PRIMARY KPI)
-- Total Impressions: {summary['total_impressions']:,}
-- Average Dwell Time: {summary['average_dwell_time']:.1f} seconds
-- Total Circulation: {summary['total_circulation']:,} (foot traffic)
-
-STYLE:
-- Modern dashboard card layout
-- 4 metric boxes in a 2x2 grid
-- Each box with:
-  - Large number as the value
-  - Metric name below
-  - Trend indicator (arrow up/down)
-  - Color coded (green for good, blue for neutral)
-- RPI box should be prominently highlighted as primary KPI
-- Clean white background with subtle shadows
-- Campaign name as header
-- Professional retail analytics style
-
-Make it look like a KPI dashboard summary card. High quality, suitable for executive reporting."""
+        visualization_prompt = CHART_TEMPLATES["comparison"].format(**template_vars)
 
     else:  # infographic
+        # Format primary value based on metric
+        if metric == "revenue_per_impression":
+            primary_value = f"${avg_val:.4f}"
+        elif metric == "dwell_time":
+            primary_value = f"{avg_val:.1f}s"
+        else:
+            primary_value = f"{int(avg_val):,}"
+
         print(f"[DEBUG VIZ]   - Infographic using all data:")
         print(f"[DEBUG VIZ]     Primary metric: {metric_display}")
+        print(f"[DEBUG VIZ]     Primary value: {primary_value}")
         print(f"[DEBUG VIZ]     RPI: ${summary['revenue_per_impression']:.4f}")
-        print(f"[DEBUG VIZ]     Impressions: {summary['total_impressions']:,}")
-        print(f"[DEBUG VIZ]     Dwell Time: {summary['average_dwell_time']:.1f}s")
-        visualization_prompt = f"""Create a comprehensive visual infographic for:
 
-CAMPAIGN: "{campaign_name}"
-ANALYSIS PERIOD: Last {days} days
-CONTEXT: In-Store Retail Media Network
+        template_vars.update({
+            "primary_value": primary_value,
+        })
 
-DATA TO VISUALIZE:
-- Primary Metric: {metric_display}
-- Trend: {trend}
-- Range: {value_format}
-- Average: {avg_val:.2f}
-
-PERFORMANCE SUMMARY (RETAIL MEDIA):
-- Revenue Per Impression (RPI): ${summary['revenue_per_impression']:.4f} (PRIMARY KPI)
-- Total Impressions: {summary['total_impressions']:,}
-- Average Dwell Time: {summary['average_dwell_time']:.1f} seconds
-- Total Circulation: {summary['total_circulation']:,} (foot traffic)
-
-INFOGRAPHIC STYLE:
-- Magazine-quality data visualization
-- Combination of mini charts, icons, and numbers
-- Color palette: Professional blues, teals, and accents
-- Clean typography hierarchy
-- Visual flow from top to bottom
-- Include trend arrows and percentage indicators
-- Modern flat design with subtle gradients
-- RPI prominently featured as the key success metric
-
-Create a visually stunning, information-rich infographic suitable for a marketing presentation or report cover."""
+        visualization_prompt = CHART_TEMPLATES["infographic"].format(**template_vars)
 
     print(f"[DEBUG VIZ] Step 6: Complete prompt being sent to Gemini 3 Pro Image:")
     print(f"[DEBUG VIZ] {'='*60}")
@@ -763,7 +978,7 @@ Create a visually stunning, information-rich infographic suitable for a marketin
 
         # Generate visualization using Gemini 3 Pro Image
         response = client.models.generate_content(
-            model="gemini-3-pro-image-preview",
+            model=IMAGE_GENERATION,
             contents=[visualization_prompt],
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
