@@ -338,3 +338,49 @@ def video_exists(path_or_filename: str) -> bool:
         else:
             path = os.path.join(GENERATED_DIR, path_or_filename)
         return os.path.exists(path)
+
+
+# =============================================================================
+# Public URL Functions (for public GCS bucket access)
+# =============================================================================
+
+def get_public_url(blob_path: str) -> Optional[str]:
+    """Get a public URL for a GCS blob.
+
+    Assumes the bucket has public read access configured.
+    Returns None if GCS is not configured.
+
+    Args:
+        blob_path: Path in bucket (e.g., 'generated/video.mp4')
+
+    Returns:
+        Public URL string or None if not in GCS mode
+    """
+    from .config import GCS_BUCKET
+    if not GCS_BUCKET:
+        return None
+    return f"https://storage.googleapis.com/{GCS_BUCKET}/{blob_path}"
+
+
+def get_video_public_url(filename: str) -> Optional[str]:
+    """Get public URL for a generated video.
+
+    Args:
+        filename: Video filename (without path prefix)
+
+    Returns:
+        Public URL string or None if not in GCS mode
+    """
+    return get_public_url(f"generated/{filename}")
+
+
+def get_thumbnail_public_url(filename: str) -> Optional[str]:
+    """Get public URL for a video thumbnail.
+
+    Args:
+        filename: Thumbnail filename (without path prefix)
+
+    Returns:
+        Public URL string or None if not in GCS mode
+    """
+    return get_public_url(f"generated/{filename}")

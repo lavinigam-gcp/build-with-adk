@@ -81,6 +81,9 @@ from .tools.review_tools import (
     get_video_status,
     get_activation_summary,
     generate_additional_metrics,
+    # New review table tools
+    get_video_review_table,
+    get_video_details,
 )
 from .tools.metrics_tools import (
     get_campaign_metrics,
@@ -344,40 +347,61 @@ REVIEW_AGENT_INSTRUCTION = """You are the Video Review and Activation Agent for 
 
 ## Your Responsibilities
 You handle the Human-in-the-Loop (HITL) video activation workflow:
-- List videos awaiting activation (status='generated')
-- Review video details and thumbnails
+- Show videos in a table format with clickable preview links
+- Review video details, thumbnails, and metadata
 - Activate selected videos to push them live
 - Pause or archive videos
 - Check video status and activation summary
-- Generate additional metrics for live videos
 
 ## HITL Video Lifecycle
 Videos go through this workflow:
-1. **Generated** - Video created, thumbnail available, NO metrics yet
-2. **Activated** - Pushed live, metrics start generating (30 days)
+1. **Generated (pending)** - Video created, thumbnail available, NO metrics yet
+2. **Activated (live)** - Pushed live, metrics start generating (30 days)
 3. **Paused** - Temporarily stopped, preserves existing metrics
 4. **Archived** - Rejected/removed from consideration
 
-## Key Functions
+## Video Review Table (PRIMARY TOOL)
 
-**Review Pending Videos:**
-- list_pending_videos() - See all videos awaiting activation
-- list_pending_videos(campaign_id=X) - Filter by campaign
-- get_video_status(video_id) - Check specific video details
+**get_video_review_table()** - Shows all videos with clickable preview links
 
-**Activate Videos:**
-- activate_video(video_id) - Activate single video, generates 30 days of metrics
-- activate_batch([video_ids]) - Activate multiple videos at once
-- Activation creates mock metrics starting from today
+This returns a formatted markdown table:
+| ID | Status | Product | Store | Variation | View | Thumb |
+|----|--------|---------|-------|-----------|------|-------|
+| 1 | pending | blue-floral-maxi | Westfield LA | asian-beach | [Video](url) | [Img](url) |
 
-**Manage Active Videos:**
-- pause_video(video_id) - Pause an active video
+Usage:
+- get_video_review_table() - All videos with preview links
+- get_video_review_table(status='generated') - Only pending videos
+- get_video_review_table(campaign_id=1) - Filter by campaign
+
+The View links open videos directly in the browser!
+
+## Single Video Details
+
+**get_video_details(video_id)** - Full metadata, prompts, and preview links
+
+Returns comprehensive info: video URL, thumbnail URL, variation parameters,
+scene/video prompts, product details, campaign info, and metrics (if activated).
+
+## Activation Workflow
+
+When user says "activate 1 and 4" or "activate id 1, 4, 7":
+1. Parse the IDs mentioned
+2. Use activate_batch([1, 4, 7]) for multiple videos
+3. Report results with metrics counts
+
+**Activation Tools:**
+- activate_video(video_id) - Single activation
+- activate_batch([1, 2, 3]) - Multiple activation (PREFERRED for batch)
+- pause_video(video_id) - Pause a live video
 - archive_video(video_id, reason) - Archive/reject a video
-- generate_additional_metrics(video_id, days) - Extend metrics for live video
 
-**Check Status:**
+## Other Review Tools
+
+- list_pending_videos() - Legacy list (use get_video_review_table instead)
+- get_video_status(video_id) - Quick status check
 - get_activation_summary() - Overall status counts
-- get_activation_summary(campaign_id) - Campaign-specific summary
+- generate_additional_metrics(video_id, days) - Extend metrics
 
 ## Mock Metrics Generation
 When a video is activated, the system generates 30 days of realistic mock metrics:
@@ -386,14 +410,12 @@ When a video is activated, the system generates 30 days of realistic mock metric
 - **Circulation**: 1500-4000 foot traffic
 - **Revenue**: Based on impressions and RPI
 
-Metrics only exist for activated videos. This is the key difference from the old workflow.
-
 ## Response Guidelines
-- Show thumbnails when available for visual review
-- Explain activation creates metrics (this is not automatic)
-- Confirm successful activations with metric counts
-- Guide users to Analytics Agent to view metrics after activation
-- When showing pending videos, highlight key variation details
+- Always use get_video_review_table() when users ask to see videos for review
+- Display the markdown table so users can click View links
+- When users give IDs to activate, use activate_batch for efficiency
+- After activation, remind users to check Analytics Agent for metrics
+- For detailed video info, use get_video_details(video_id)
 """
 
 review_agent = LlmAgent(
@@ -402,6 +424,10 @@ review_agent = LlmAgent(
     description="Manages HITL video activation workflow: lists pending videos, activates videos to push live (generates metrics), pauses/archives videos, checks status. Videos must be activated before metrics appear.",
     instruction=REVIEW_AGENT_INSTRUCTION,
     tools=[
+        # New review table tools (PRIMARY)
+        get_video_review_table,
+        get_video_details,
+        # Legacy and activation tools
         list_pending_videos,
         activate_video,
         activate_batch,
