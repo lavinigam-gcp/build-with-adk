@@ -160,12 +160,20 @@ if ! command -v gcloud &> /dev/null; then
 fi
 print_success "gcloud CLI found"
 
-# Check adk
-if ! command -v adk &> /dev/null; then
+# Check adk - prefer .venv-deploy version, then system
+if [ -f "$PROJECT_DIR/.venv-deploy/bin/adk" ]; then
+    ADK_CMD="$PROJECT_DIR/.venv-deploy/bin/adk"
+    print_success "adk CLI found: .venv-deploy/bin/adk"
+elif [ -f "$PROJECT_DIR/.venv/bin/adk" ]; then
+    ADK_CMD="$PROJECT_DIR/.venv/bin/adk"
+    print_success "adk CLI found: .venv/bin/adk"
+elif command -v adk &> /dev/null; then
+    ADK_CMD="adk"
+    print_success "adk CLI found (system)"
+else
     print_error "adk CLI not found. Please install: pip install google-adk"
     exit 1
 fi
-print_success "adk CLI found"
 
 # Check agent directory
 if [ ! -d "$AGENT_DIR" ]; then
@@ -216,7 +224,7 @@ echo ""
 # =============================================================================
 
 # Base command
-DEPLOY_CMD="adk deploy agent_engine"
+DEPLOY_CMD="$ADK_CMD deploy agent_engine"
 DEPLOY_CMD="$DEPLOY_CMD --project=$GOOGLE_CLOUD_PROJECT"
 DEPLOY_CMD="$DEPLOY_CMD --region=$REGION"
 DEPLOY_CMD="$DEPLOY_CMD --staging_bucket=$STAGING_BUCKET"

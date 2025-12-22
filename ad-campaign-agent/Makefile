@@ -1,7 +1,7 @@
 # Makefile for Ad Campaign Agent
 # Compatible with agent-starter-pack deployment
 
-.PHONY: install dev playground deploy deploy-ae clean help test test-unit test-integration test-e2e test-all test-coverage
+.PHONY: install dev playground deploy deploy-ae deploy-ae-global clean help test test-unit test-integration test-e2e test-all test-coverage
 
 # ============================================================================
 # LOCAL DEVELOPMENT
@@ -59,6 +59,24 @@ deploy-ae:
 ## Deploy to Agent Engine with tracing
 deploy-ae-trace:
 	./scripts/deploy_ae.sh --trace
+
+## Deploy to Agent Engine with global region (Python SDK - for Gemini 3)
+## Note: Agent Engine requires Python 3.9-3.13 (not 3.14+)
+## Uses .venv-deploy (Python 3.12) if available, otherwise finds compatible Python
+DEPLOY_PYTHON := $(shell if [ -f ".venv-deploy/bin/python" ]; then echo ".venv-deploy/bin/python"; elif command -v python3.12 >/dev/null 2>&1; then echo "python3.12"; elif command -v python3.11 >/dev/null 2>&1; then echo "python3.11"; else echo "python3"; fi)
+
+deploy-ae-global:
+	@echo "Deploying to Agent Engine (global region for Gemini 3)..."
+	@echo "Using Python: $(DEPLOY_PYTHON)"
+	$(DEPLOY_PYTHON) scripts/deploy_ae_inline.py
+
+deploy-ae-global-trace:
+	@echo "Using Python: $(DEPLOY_PYTHON)"
+	$(DEPLOY_PYTHON) scripts/deploy_ae_inline.py --trace
+
+deploy-ae-global-dry-run:
+	@echo "Using Python: $(DEPLOY_PYTHON)"
+	$(DEPLOY_PYTHON) scripts/deploy_ae_inline.py --dry-run
 
 ## Preview deployment commands without executing
 deploy-dry-run:
@@ -181,11 +199,14 @@ help:
 	@echo "  make playground  - Alias for 'make dev'"
 	@echo ""
 	@echo "DEPLOYMENT:"
-	@echo "  make deploy         - Deploy to Cloud Run (with Web UI)"
-	@echo "  make deploy-trace   - Deploy to Cloud Run with Cloud Trace"
-	@echo "  make deploy-ae      - Deploy to Agent Engine (managed)"
-	@echo "  make deploy-ae-trace - Deploy to Agent Engine with tracing"
-	@echo "  make deploy-dry-run - Preview Cloud Run deployment"
+	@echo "  make deploy             - Deploy to Cloud Run (with Web UI)"
+	@echo "  make deploy-trace       - Deploy to Cloud Run with Cloud Trace"
+	@echo "  make deploy-ae          - Deploy to Agent Engine (us-central1, CLI)"
+	@echo "  make deploy-ae-trace    - Deploy to Agent Engine with tracing"
+	@echo "  make deploy-ae-global   - Deploy to Agent Engine (global region, Gemini 3)"
+	@echo "  make deploy-ae-global-trace - With tracing enabled"
+	@echo "  make deploy-ae-global-dry-run - Preview global deployment"
+	@echo "  make deploy-dry-run     - Preview Cloud Run deployment"
 	@echo ""
 	@echo "AGENT STARTER PACK:"
 	@echo "  make starter-pack   - Create production project with CI/CD"

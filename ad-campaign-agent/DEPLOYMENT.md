@@ -146,10 +146,34 @@ Agent Engine is Google Cloud's managed service for production AI agents.
 - **Auto-Scaling**: No container management needed
 - **Query API**: Programmatic access
 
-### Quick Deploy
+### Deployment Options
+
+| Method | Region | Gemini 3 Support | Command |
+|--------|--------|------------------|---------|
+| **CLI** | `us-central1` | No | `make deploy-ae` |
+| **Python SDK (Global)** | `global` | **Yes** | `make deploy-ae-global` |
+
+> **Note:** Gemini 3 models (`gemini-3-flash-preview`, `gemini-3-pro-image-preview`) require the global region. Use `make deploy-ae-global` for these models.
+
+### Quick Deploy (Global Region - Recommended)
+
+For Gemini 3 models, use the Python SDK "inline deployment":
 
 ```bash
-# Deploy to Agent Engine
+# Deploy with global region (Gemini 3 support)
+make deploy-ae-global
+
+# With Cloud Trace
+make deploy-ae-global-trace
+
+# Preview only
+make deploy-ae-global-dry-run
+```
+
+### Quick Deploy (CLI - Legacy)
+
+```bash
+# Deploy to Agent Engine (us-central1)
 ./scripts/deploy_ae.sh
 
 # With Cloud Trace
@@ -174,13 +198,14 @@ Options:
 
 ### Query Your Agent
 
-**Python:**
+**Python (Global Region):**
 
 ```python
 import vertexai
 from vertexai import agent_engines
 
-vertexai.init(project="your-project-id", location="us-central1")
+# Use "global" for Gemini 3 models, or "us-central1" for legacy
+vertexai.init(project="your-project-id", location="global")
 agent = agent_engines.get("YOUR_AGENT_ENGINE_ID")
 
 # Single query
@@ -192,11 +217,19 @@ for chunk in agent.stream_query(input="Show campaign metrics"):
     print(chunk, end="")
 ```
 
-**REST API:**
+**REST API (Global Region):**
 
 ```bash
 TOKEN=$(gcloud auth print-access-token)
 
+# For global region deployment
+curl -X POST \
+  "https://global-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT/locations/global/reasoningEngines/YOUR_AGENT_ID:query" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "List all campaigns"}'
+
+# For us-central1 region deployment
 curl -X POST \
   "https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/reasoningEngines/YOUR_AGENT_ID:query" \
   -H "Authorization: Bearer $TOKEN" \
@@ -325,19 +358,22 @@ open "https://console.cloud.google.com/run/detail/us-central1/ad-campaign-agent/
 | `app/config.py` | Models, paths, environment detection |
 | `app/requirements.txt` | Python dependencies |
 | `scripts/deploy.sh` | Cloud Run deployment |
-| `scripts/deploy_ae.sh` | Agent Engine deployment |
+| `scripts/deploy_ae.sh` | Agent Engine deployment (CLI, us-central1) |
+| `scripts/deploy_ae_inline.py` | Agent Engine deployment (Python SDK, global region) |
 | `scripts/setup_gcp.sh` | GCP resource setup |
 
 ---
 
 ## Models Used
 
-| Purpose | Model |
-|---------|-------|
-| Agent Reasoning | `gemini-2.5-pro` |
-| Scene Image Generation | `gemini-2.5-flash-image` |
-| Video Animation | `veo-3.1-generate-preview` |
-| Charts & Maps | `gemini-2.5-flash-image` |
+| Purpose | Model | Region Required |
+|---------|-------|-----------------|
+| Agent Reasoning | `gemini-3-flash-preview` | `global` |
+| Scene Image Generation | `gemini-3-pro-image-preview` | `global` |
+| Video Animation | `veo-3.1-generate-preview` | `global` |
+| Charts & Maps | `gemini-3-pro-image-preview` | `global` |
+
+> **Important:** All Gemini 3 models require `global` region. Use `make deploy-ae-global` for Agent Engine deployment.
 
 ---
 
@@ -354,7 +390,17 @@ export GOOGLE_MAPS_API_KEY="your-key"
 ./scripts/deploy.sh --trace
 ```
 
-### Agent Engine (Full Deploy)
+### Agent Engine (Full Deploy - Global Region)
+
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT
+./scripts/setup_gcp.sh
+make deploy-ae-global-trace  # Recommended for Gemini 3
+```
+
+### Agent Engine (Legacy - us-central1)
 
 ```bash
 gcloud auth login
@@ -380,6 +426,9 @@ gcloud config set project YOUR_PROJECT
 # Cloud Run
 gcloud run services delete ad-campaign-agent --region=us-central1
 
-# Agent Engine
+# Agent Engine (global region)
+gcloud ai reasoning-engines delete YOUR_ID --region=global
+
+# Agent Engine (us-central1 region)
 gcloud ai reasoning-engines delete YOUR_ID --region=us-central1
 ```

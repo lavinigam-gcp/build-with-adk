@@ -49,3 +49,4 @@ test_generated_image.png
 .test/
 # Ignore local product images (stored in GCS)
 scripts/products/
+.venv-deploy/
