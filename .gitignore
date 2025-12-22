@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.mcp.json
 
 # Dot folders
 .adk/
@@ -14,6 +15,7 @@
 
 # Docs folder
 retail-ai-location-strategy/.docs/
+adk-deep-research/.docs/
 
 # Blog internal files
 retail-ai-location-strategy/blog/implementation_plan.md

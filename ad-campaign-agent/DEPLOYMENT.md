@@ -1,0 +1,385 @@
+# Deployment Guide
+
+This guide covers deploying the Ad Campaign Agent to Google Cloud. Choose the deployment option that fits your use case.
+
+## Deployment Options
+
+| Option | Best For | Web UI | Session Management | Scaling |
+|--------|----------|--------|-------------------|---------|
+| **Cloud Run** | Development, demos, Web UI access | Yes (`/dev-ui`) | Manual (in-memory) | Configurable |
+| **Agent Engine** | Production, API access | No (API only) | Managed by Vertex AI | Automatic |
+
+---
+
+## Prerequisites
+
+### Required Tools
+
+```bash
+# Verify installations
+gcloud --version    # Google Cloud SDK
+adk --version       # ADK CLI (pip install google-adk)
+python3 --version   # Python 3.11+
+```
+
+### GCP Authentication
+
+```bash
+# Login and set project
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT_ID
+```
+
+### Required APIs
+
+```bash
+gcloud services enable \
+  run.googleapis.com \
+  storage.googleapis.com \
+  aiplatform.googleapis.com \
+  maps-backend.googleapis.com
+```
+
+---
+
+## Initial Setup (One-Time)
+
+### 1. Create GCS Bucket
+
+```bash
+# Create bucket for assets
+gcloud storage buckets create gs://YOUR_BUCKET_NAME \
+  --location=us-central1 \
+  --uniform-bucket-level-access
+```
+
+### 2. Upload Product Images
+
+Product images must be in GCS for video generation to work:
+
+```bash
+# Using the setup script (recommended)
+./scripts/setup_gcp.sh
+
+# Or manually upload
+gcloud storage cp path/to/images/* gs://YOUR_BUCKET_NAME/product-images/
+```
+
+### 3. Verify Setup
+
+```bash
+# List uploaded images
+gcloud storage ls gs://YOUR_BUCKET_NAME/product-images/
+```
+
+---
+
+## Cloud Run Deployment
+
+Cloud Run provides a web UI at `/dev-ui` for interactive testing.
+
+### Quick Deploy
+
+```bash
+# Set environment variables
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GCS_BUCKET="your-bucket-name"
+export GOOGLE_MAPS_API_KEY="your-maps-key"  # Optional
+
+# Deploy
+./scripts/deploy.sh
+```
+
+### Deploy Script Options
+
+```bash
+./scripts/deploy.sh [OPTIONS]
+
+Options:
+  --trace       Enable Cloud Trace for observability
+  --private     Require authentication (no public access)
+  --dry-run     Show command without executing
+  --help        Show help message
+```
+
+### What Gets Deployed
+
+The script packages the `app/` folder and deploys it with:
+
+- ADK Web UI enabled (`--with_ui`)
+- GCS for artifact storage
+- 2GB memory, 2 CPU (for video processing)
+- 600s timeout (for long video generation)
+- Public access by default
+
+### Post-Deployment
+
+```bash
+# Get service URL
+gcloud run services describe ad-campaign-agent \
+  --region=us-central1 \
+  --format='value(status.url)'
+
+# View logs
+gcloud run services logs read ad-campaign-agent \
+  --region=us-central1 --limit=50
+```
+
+### Access Points
+
+After deployment:
+
+- **Web UI**: `https://your-service-url/dev-ui`
+- **API**: `https://your-service-url`
+
+---
+
+## Agent Engine Deployment
+
+Agent Engine is Google Cloud's managed service for production AI agents.
+
+### Benefits
+
+- **Managed Sessions**: Automatic session and state management
+- **Memory Bank**: Persistent memory across conversations
+- **Auto-Scaling**: No container management needed
+- **Query API**: Programmatic access
+
+### Quick Deploy
+
+```bash
+# Deploy to Agent Engine
+./scripts/deploy_ae.sh
+
+# With Cloud Trace
+./scripts/deploy_ae.sh --trace
+
+# Preview only
+./scripts/deploy_ae.sh --dry-run
+```
+
+### Deploy Script Options
+
+```bash
+./scripts/deploy_ae.sh [OPTIONS]
+
+Options:
+  --dry-run              Show command without executing
+  --trace                Enable Cloud Trace
+  --update               Update existing deployment
+  --agent-engine-id=ID   Specify Agent Engine ID to update
+  --help                 Show help message
+```
+
+### Query Your Agent
+
+**Python:**
+
+```python
+import vertexai
+from vertexai import agent_engines
+
+vertexai.init(project="your-project-id", location="us-central1")
+agent = agent_engines.get("YOUR_AGENT_ENGINE_ID")
+
+# Single query
+response = agent.query(input="List all campaigns")
+print(response)
+
+# Streaming
+for chunk in agent.stream_query(input="Show campaign metrics"):
+    print(chunk, end="")
+```
+
+**REST API:**
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+
+curl -X POST \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/reasoningEngines/YOUR_AGENT_ID:query" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "List all campaigns"}'
+```
+
+### Manage Deployments
+
+```bash
+# List deployed agents
+gcloud ai reasoning-engines list --region=us-central1
+
+# Update existing deployment
+./scripts/deploy_ae.sh --agent-engine-id=YOUR_AGENT_ID
+
+# Delete deployment
+gcloud ai reasoning-engines delete YOUR_AGENT_ID --region=us-central1
+```
+
+---
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID |
+| `GCS_BUCKET` | GCS bucket for assets |
+
+### Optional
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_MAPS_API_KEY` | For static map generation |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI region (default: `global`) |
+
+### Auto-Configured by Deploy Scripts
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `GOOGLE_GENAI_USE_VERTEXAI` | `True` | Use Vertex AI |
+| `K_SERVICE` | (Cloud Run sets this) | Detect Cloud Run environment |
+| `GOOGLE_CLOUD_AGENT_ENGINE_ID` | (Agent Engine sets this) | Detect Agent Engine environment |
+
+---
+
+## Storage Structure
+
+```plaintext
+gs://YOUR_BUCKET/
+├── product-images/        # Source product images (22 items)
+│   ├── blue-floral-maxi-dress.jpg
+│   ├── elegant-black-cocktail-dress.jpg
+│   └── ...
+├── seed-images/           # Legacy location (deprecated)
+└── generated/             # Generated videos and thumbnails
+    ├── campaign_1_ad_5.mp4
+    ├── campaign_1_ad_5_thumb.png
+    └── ...
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Model Not Found (404)**
+
+```text
+Publisher Model `gemini-3-pro-preview` was not found
+```
+
+Fix: Ensure `GOOGLE_CLOUD_LOCATION=global` (some models require this).
+
+**Permission Denied on `/app/agents/`**
+
+```text
+PermissionError: [Errno 13] Permission denied: '/app/agents/.adk'
+```
+
+Fix: Deploy scripts now use `--artifact_service_uri=gs://bucket` for GCS-based artifacts.
+
+**PIL/Pillow Not Found**
+
+```text
+No module named 'PIL'
+```
+
+Fix: Ensure `requirements.txt` is in the `app/` folder with `Pillow>=10.2.0`.
+
+**Maps API Not Working**
+
+```text
+GOOGLE_MAPS_API_KEY environment variable not set
+```
+
+Fix: Export `GOOGLE_MAPS_API_KEY` before deploying. AI-generated maps work without this key.
+
+**Video Generation Timeouts**
+
+Veo 3.1 takes 2-3 minutes per video. The deploy script sets a 600s timeout.
+
+### View Logs
+
+```bash
+# Cloud Run - real-time
+gcloud run services logs tail ad-campaign-agent --region=us-central1
+
+# Cloud Run - recent logs
+gcloud run services logs read ad-campaign-agent --region=us-central1 --limit=100
+
+# Cloud Console
+open "https://console.cloud.google.com/run/detail/us-central1/ad-campaign-agent/logs"
+```
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `app/agent.py` | Agent definitions (root_agent) |
+| `app/config.py` | Models, paths, environment detection |
+| `app/requirements.txt` | Python dependencies |
+| `scripts/deploy.sh` | Cloud Run deployment |
+| `scripts/deploy_ae.sh` | Agent Engine deployment |
+| `scripts/setup_gcp.sh` | GCP resource setup |
+
+---
+
+## Models Used
+
+| Purpose | Model |
+|---------|-------|
+| Agent Reasoning | `gemini-2.5-pro` |
+| Scene Image Generation | `gemini-2.5-flash-image` |
+| Video Animation | `veo-3.1-generate-preview` |
+| Charts & Maps | `gemini-2.5-flash-image` |
+
+---
+
+## Quick Reference
+
+### Cloud Run (Full Deploy)
+
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT
+./scripts/setup_gcp.sh
+export GOOGLE_MAPS_API_KEY="your-key"
+./scripts/deploy.sh --trace
+```
+
+### Agent Engine (Full Deploy)
+
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT
+./scripts/setup_gcp.sh
+./scripts/deploy_ae.sh --trace
+```
+
+### Update Deployment
+
+```bash
+# Cloud Run - just redeploy
+./scripts/deploy.sh
+
+# Agent Engine - update existing
+./scripts/deploy_ae.sh --agent-engine-id=YOUR_ID
+```
+
+### Delete Deployment
+
+```bash
+# Cloud Run
+gcloud run services delete ad-campaign-agent --region=us-central1
+
+# Agent Engine
+gcloud ai reasoning-engines delete YOUR_ID --region=us-central1
+```
