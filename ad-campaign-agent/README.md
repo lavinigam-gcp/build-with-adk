@@ -1,285 +1,244 @@
 # Ad Campaign Agent
 
-A multi-agent ADK system for fashion retail ad campaign management, showcasing the end-to-end journey from campaign creation to AI-powered video ad generation using **Veo 3.1** and **Gemini 3 Pro**.
+An AI-powered retail media platform built with Google's [Agent Development Kit (ADK)](https://google.github.io/adk-docs/). This multi-agent system demonstrates end-to-end ad campaign management - from product selection to video ad generation using **Veo 3.1** and **Gemini**.
 
-## How It Works
+## The Complete Journey
 
-From idea to video ad in minutes, not weeks. Just tell the AI what you need in plain English.
+![Use Case Overview](assets/use-case-poster.jpeg)
 
-![How It Works](assets/use_case_explainer.jpeg)
+*From overwhelmed to optimized: 6-step journey from discovering your AI team to scaling winning formulas across all store locations. Traditional 4-6 week campaigns now take under 10 minutes.*
 
-**What Can You Do?**
-- Create ad campaigns for any location
-- Generate professional video ads from product photos
-- Get AI-powered insights on what's working
-- Compare performance across campaigns
-- Scale winning formulas to other campaigns
-- Visualize data with charts and maps
+## What This Project Does
 
-## Features
+This agent helps retail media teams create and manage in-store video advertising campaigns:
 
-- **Multi-Agent Architecture**: Coordinator agent with 3 specialized sub-agents
-- **Video Ad Generation**: Create cinematic fashion videos using Veo 3.1
-- **Video Analysis**: Auto-extract structured properties from generated videos using Gemini
-- **Property-Controlled Generation**: Generate videos with specific mood, energy, style, and color controls
-- **AI Image Generation**: Generate seed images with Gemini 3 Pro Image
-- **Image Analysis**: Extract fashion metadata (garment type, mood, setting, etc.)
-- **Campaign Management**: Full CRUD operations with location targeting
-- **Performance Analytics**: Metrics tracking, insights, and visualizations
-- **Map Visualizations**: Geographic campaign performance views
-- **Winning Formula**: Scale top-performing ad characteristics (including video properties) to other campaigns
+- **Browse Products** - 22 pre-loaded fashion products with images
+- **Create Campaigns** - Product-centric campaigns tied to store locations
+- **Generate Video Ads** - Two-stage pipeline: Gemini creates scene images, Veo 3.1 animates them
+- **Human-in-the-Loop Review** - Approve, pause, or archive generated videos
+- **Analyze Performance** - In-store retail metrics with AI-generated charts and maps
+- **Scale Winners** - Apply successful video characteristics to other campaigns
 
 ## Architecture
 
-### High-Level Overview
+### High-Level Design
 
 ![High-Level Architecture](assets/high_level_system_design.jpeg)
 
-The system uses a hierarchical multi-agent architecture:
-- **Coordinator Agent**: Routes requests to specialized sub-agents
-- **Campaign Agent** (7 tools): Campaign CRUD, location targeting, store search
-- **Media Agent** (12 tools): AI image/video generation, video analysis, property-controlled generation
-- **Analytics Agent** (6 tools): Performance metrics, insights, visualizations
+*Layered architecture: Interface → Coordinator → Specialized Agents → AI Services → Data Storage → Deployment. The system comprises 39 tools across 4 agents managing 4 pre-loaded campaigns.*
 
-### Detailed System Design
+The system uses a hierarchical multi-agent architecture with four specialized agents:
 
-For a comprehensive view of all 22 tools, data flows, and external service integrations:
+| Agent | Role | Key Tools |
+|-------|------|-----------|
+| **Coordinator** | Routes requests to specialists | Orchestration |
+| **Campaign Agent** | Campaign CRUD, locations, demographics | 7 tools |
+| **Media Agent** | Video generation, product browsing | 15 tools |
+| **Review Agent** | HITL workflow, activation, status | 9 tools |
+| **Analytics Agent** | Metrics, charts, maps, insights | 8 tools |
 
-![Comprehensive Architecture](assets/overall_system_design.jpeg)
+### Detailed System Architecture
+
+![System Architecture](assets/system-architecture.jpeg)
+
+*Complete technical view showing all agent tools, external services (Gemini 3 Pro, Veo 3.1, PostgreSQL), data storage layers, and deployment options (Cloud Run with Web UI, Agent Engine for production).*
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- Google Cloud project with enabled APIs:
-  - Generative AI API (Gemini)
-  - Vertex AI API (for Veo 3.1)
-  - Maps API (optional, for location features)
+- Google Cloud project with Vertex AI API enabled
+- [ADK CLI](https://google.github.io/adk-docs/get-started/installation/) installed
 
-### Installation
+### Local Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/lavinigam-gcp/build-with-adk.git
-cd build-with-adk/ad-campaign-agent
+# Clone and navigate
+git clone <repository-url>
+cd ad-campaign-agent
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
 
 # Install dependencies
-pip install google-adk google-genai googlemaps Pillow
+pip install -r app/requirements.txt
 
 # Set environment variables
-export GOOGLE_API_KEY="your-gemini-api-key"
-export GOOGLE_MAPS_API_KEY="your-maps-api-key"  # Optional
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GCS_BUCKET="your-gcs-bucket"
+export GOOGLE_MAPS_API_KEY="your-maps-key"  # Optional
+
+# Run with ADK Web UI
+adk web app
 ```
 
-### Run the Agent
+Open http://localhost:8000 to access the ADK Web UI.
 
-```bash
-# Web UI (recommended)
-adk web .
+### Try These Prompts
 
-# API Server
-adk api_server .
+```
+# See what's available
+What agents are available and what are our current campaigns?
 
-# CLI
-adk run .
+# Browse products
+Show me all available products with their image links
+
+# Generate a video
+Generate a video for campaign 1 with an Asian model on a beach at golden hour
+
+# Review and activate
+Show me the video review table with public links
+Activate video 5
+
+# View analytics
+Get metrics for campaign 1 over the last 30 days
+Generate a trendline chart for campaign 1
 ```
 
 ## Project Structure
 
 ```
 ad-campaign-agent/
-├── app/
-│   ├── __init__.py
-│   ├── agent.py            # Multi-agent definitions
-│   ├── config.py           # Configuration and paths
+├── app/                          # Core agent code (deployment target)
+│   ├── agent.py                  # Multi-agent definitions (root_agent)
+│   ├── config.py                 # Models, paths, environment detection
+│   ├── storage.py                # GCS/local storage abstraction
+│   ├── requirements.txt          # Python dependencies
 │   ├── database/
-│   │   ├── db.py           # SQLite database connection
-│   │   └── mock_data.py    # Demo data population
+│   │   ├── db.py                 # SQLite schema and migrations
+│   │   ├── mock_data.py          # Demo data population
+│   │   └── products_data.py      # 22 product definitions
 │   ├── models/
-│   │   ├── __init__.py
-│   │   └── video_properties.py  # Pydantic schema for video properties
+│   │   ├── variation.py          # CreativeVariation Pydantic model
+│   │   └── video_properties.py   # VideoProperties for analysis
 │   └── tools/
-│       ├── campaign_tools.py   # Campaign CRUD operations
-│       ├── image_tools.py      # Image generation & analysis
-│       ├── video_tools.py      # Veo 3.1 video generation & analysis
-│       ├── metrics_tools.py    # Analytics & visualizations
-│       └── maps_tools.py       # Location & map features
+│       ├── campaign_tools.py     # Campaign CRUD operations
+│       ├── image_tools.py        # Image handling and analysis
+│       ├── video_tools.py        # Veo 3.1 video generation
+│       ├── review_tools.py       # HITL activation workflow
+│       ├── metrics_tools.py      # Analytics and charts
+│       ├── maps_tools.py         # Google Maps integration
+│       └── prompt_builders.py    # Scene/video prompt generation
 ├── scripts/
-│   └── backfill_video_properties.py  # One-time migration script
-├── assets/                 # Architecture diagrams
-├── selected/               # Seed images (static + AI-generated)
-├── generated/              # Generated video ads
-├── campaigns.db            # SQLite database with demo data
-├── DEMO_GUIDE.md           # Complete demo journeys & queries
-└── README.md
+│   ├── deploy.sh                 # Cloud Run deployment
+│   ├── deploy_ae.sh              # Agent Engine deployment
+│   └── setup_gcp.sh              # GCP resource setup
+├── assets/                       # Architecture diagrams
+├── DEMO_GUIDE.md                 # Complete demo walkthrough
+└── DEPLOYMENT.md                 # Deployment instructions
 ```
 
-## Demo Flow
+## Key Concepts
 
-The agent comes pre-loaded with 4 demo campaigns and 90 days of mock metrics:
+### Product-Centric Campaigns
 
-| Campaign | Location | Category | Status |
-|----------|----------|----------|--------|
-| Summer Blooms 2025 | Los Angeles, CA | Summer | Active |
-| Evening Elegance Collection | New York, NY | Formal | Active |
-| Urban Professional | Chicago, IL | Professional | Active |
-| Fall Essentials | Seattle, WA | Essentials | Draft |
+Each campaign = 1 product + 1 store location.
 
-### Demo Journeys
-
-We have 8 complete demo journeys for different personas. See **[DEMO_GUIDE.md](DEMO_GUIDE.md)** for full step-by-step walkthroughs.
-
-| Journey | Persona | Duration | Description |
-|---------|---------|----------|-------------|
-| Quick Overview | Executive | ~2 min | Get campaign status and top performers |
-| Campaign to Video | Campaign Manager | ~10 min | Create campaign and generate video ad |
-| Performance Analysis | Marketing Analyst | ~5 min | Compare campaigns, apply winning formula |
-| Geographic Strategy | Retail Director | ~5 min | Map visualizations and regional insights |
-| Creative Iteration | Creative Director | ~15 min | A/B test variations and predict performance |
-| Executive Demo | Stakeholders | ~20 min | Full platform capabilities showcase |
-| Image-First Workflow | Creative Team | ~12 min | Generate images then create video ads |
-| Property-Controlled Generation | Creative Director | ~12 min | Fine-tune video mood, energy, style, and colors |
-
-### Try These Prompts
-
-**Campaign Management**
 ```
-"Show me all active campaigns"
-"Create a campaign called 'Holiday Sparkle' for Miami stores"
+Campaign: "Blue Floral Maxi Dress - Westfield Century City"
+         └── Product: blue-floral-maxi-dress
+         └── Store: Westfield Century City, Los Angeles, CA
 ```
 
-**Video Generation**
-```
-"Generate a video ad for the Summer Blooms campaign"
-"Create a setting variation with an urban rooftop background"
-```
+This enables clear metrics attribution and A/B testing per product per location.
 
-**Property-Controlled Video**
-```
-"Generate a quirky, high-energy video with warm colors for campaign 1"
-"Create a serene, calm video with dramatic lighting for campaign 3"
-"Get video properties for ad 21"
-```
+### Two-Stage Video Pipeline
 
-**Analytics & Insights**
-```
-"What are the top 5 performing ads by revenue?"
-"Why is the LA campaign doing so well?"
-"Compare NYC vs Chicago performance"
-```
+1. **Stage 1 (Gemini)**: Generate scene image with model wearing the product
+2. **Stage 2 (Veo 3.1)**: Animate into 8-second cinematic video
 
-**Scaling Success**
-```
-"Apply the winning formula from our best ad to Urban Professional"
-"Generate 3 variations with different moods"
-```
+### Creative Variations
 
-**Visualizations**
-```
-"Show all campaigns on a map with performance metrics"
-"Create a revenue trendline chart for Summer Blooms"
-```
+Videos can be customized with 15+ parameters:
 
-## Tools Reference
-
-### Campaign Agent Tools
-
-| Tool | Description |
-|------|-------------|
-| `create_campaign` | Create new campaign with name, category, location |
-| `list_campaigns` | List all campaigns with optional status filter |
-| `get_campaign` | Get detailed campaign info by ID |
-| `update_campaign` | Update campaign properties or status |
-| `get_campaign_locations` | Get all campaign locations with coordinates |
-| `search_nearby_stores` | Find fashion stores near a location |
-| `get_location_demographics` | Get demographic data for a city |
-
-### Media Agent Tools
-
-| Tool | Description |
-|------|-------------|
-| `generate_seed_image` | Create fashion image with Gemini 3 Pro Image |
-| `add_seed_image` | Add existing image to a campaign |
-| `analyze_image` | Extract metadata (garment, mood, setting, etc.) |
-| `list_campaign_images` | List images associated with a campaign |
-| `list_available_images` | List all images in selected/ folder |
-| `generate_video_ad` | Create video ad with Veo 3.1 (4/6/8 seconds), auto-analyzes properties |
-| `generate_video_with_properties` | Generate video with specific mood, energy, style, color controls |
-| `get_video_properties` | Get analyzed properties for any video ad |
-| `analyze_video` | Analyze video to extract structured properties (mood, energy, style, etc.) |
-| `generate_video_variation` | Create A/B test variant (setting/mood/angle/style) |
-| `apply_winning_formula` | Scale top performer characteristics (including video properties) to other campaigns |
-| `list_campaign_ads` | List all video ads for a campaign with their properties |
-
-### Analytics Agent Tools
-
-| Tool | Description |
-|------|-------------|
-| `get_campaign_metrics` | Get daily/aggregated in-store retail media metrics |
-| `get_top_performing_ads` | Rank ads by RPI/impressions/dwell_time/circulation |
-| `get_campaign_insights` | AI-generated insights and recommendations |
-| `compare_campaigns` | Compare RPI and metrics across campaigns |
-| `generate_metrics_visualization` | Create charts (trendline/bar/comparison/infographic) |
-| `generate_map_visualization` | Create map visualizations (performance/regional/heatmap) |
-
-## AI Models Used
-
-| Model | Purpose |
-|-------|---------|
-| `gemini-3-pro-preview` | Agent reasoning and coordination |
-| `gemini-2.5-pro` | Video analysis (structured property extraction) |
-| `gemini-3-pro-image-preview` | Seed image generation, charts, maps |
-| `veo-3.1-generate-preview` | Video ad generation (4/6/8 seconds) |
-
-## Database Schema
-
-```sql
-campaigns (id, name, description, category, city, state, status, created_at)
-campaign_images (id, campaign_id, image_path, image_type, metadata, created_at)
-campaign_ads (id, campaign_id, image_id, video_path, prompt_used, duration_seconds, status, video_properties, created_at)
-campaign_metrics (id, campaign_id, ad_id, date, impressions, dwell_time, circulation, revenue)
-```
-
-### Retail Media Metrics
-
-| Metric | Description | Typical Range |
-|--------|-------------|---------------|
-| `impressions` | Number of ad displays on in-store screens | 15K-35K/day |
-| `dwell_time` | Seconds shoppers viewed the ad | 2-15 seconds |
-| `circulation` | Foot traffic count past display | 20K-100K/day |
-| `revenue_per_impression` | **PRIMARY KPI** (computed: revenue/impressions) | $0.02-$0.10 |
-
-### Video Properties Schema
-
-The `video_properties` column stores a JSON object with 25+ properties extracted from video analysis:
-
-| Category | Properties |
+| Category | Parameters |
 |----------|------------|
-| Mood/Emotion | `mood`, `mood_intensity`, `has_warmth` |
-| Visual Style | `visual_style`, `camera_movement`, `lighting_style` |
-| Energy/Pace | `energy_level`, `movement_amount` |
-| Color | `color_temperature`, `dominant_colors`, `color_saturation` |
-| Subject | `subject_count`, `garment_visibility`, `has_multiple_outfits` |
-| Audio | `audio_type`, `has_dialogue`, `music_tempo`, `audio_mood` |
-| Setting | `setting_type`, `time_of_day`, `background_complexity` |
-| Production | `aspect_ratio`, `has_text_overlays`, `has_brand_elements` |
+| Model | `model_ethnicity` (asian, european, african, latina, etc.) |
+| Setting | `setting` (studio, beach, urban, cafe, rooftop, garden) |
+| Mood | `mood` (elegant, romantic, bold, playful, sophisticated) |
+| Lighting | `lighting` (natural, studio, dramatic, soft, golden, neon) |
+| Camera | `camera_movement` (orbit, pan, dolly, tracking, crane) |
+| Activity | `activity` (walking, standing, sitting, dancing, posing) |
+| Environment | `time_of_day`, `weather`, `season` |
+
+### HITL Workflow
+
+Videos follow a review lifecycle:
+
+```
+Generated → [Review] → Activated → [Optionally] → Paused/Archived
+                           ↓
+                    Metrics generated (30 days)
+```
+
+Metrics only appear after human approval.
+
+### In-Store Retail Metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Impressions** | Ad displays on in-store screens |
+| **Dwell Time** | Seconds shoppers viewed the ad |
+| **Circulation** | Foot traffic past the display |
+| **RPI** | Revenue Per Impression (primary KPI) |
+
+## Models Used
+
+| Purpose | Model |
+|---------|-------|
+| Agent Reasoning | `gemini-2.5-pro` |
+| Scene Image Generation | `gemini-2.5-flash-image` |
+| Video Animation | `veo-3.1-generate-preview` |
+| Charts & Maps | `gemini-2.5-flash-image` |
+
+## Deployment
+
+Two deployment options are available:
+
+| Option | Best For | Web UI | Session Management |
+|--------|----------|--------|-------------------|
+| **Cloud Run** | Development, demos | Yes (`/dev-ui`) | Manual |
+| **Agent Engine** | Production, API access | No | Managed by Vertex AI |
+
+```bash
+# Cloud Run (with Web UI)
+./scripts/deploy.sh
+
+# Agent Engine (managed service)
+./scripts/deploy_ae.sh
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
+
+## Demo Guide
+
+For a complete 20-minute demo walkthrough covering all agents and features, see [DEMO_GUIDE.md](DEMO_GUIDE.md).
+
+Pre-loaded demo campaigns:
+
+| Campaign | Product | Store | Location |
+|----------|---------|-------|----------|
+| 1 | Blue Floral Maxi Dress | Westfield Century City | Los Angeles, CA |
+| 2 | Elegant Black Cocktail Dress | Bloomingdale's 59th Street | New York, NY |
+| 3 | Black High Waist Trousers | Water Tower Place | Chicago, IL |
+| 4 | Emerald Satin Slip Dress | The Grove | Los Angeles, CA |
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_API_KEY` | Yes | Gemini API key |
-| `GOOGLE_MAPS_API_KEY` | No | Google Maps API key for location features |
+| `GOOGLE_CLOUD_PROJECT` | Yes | GCP project ID |
+| `GCS_BUCKET` | Yes | GCS bucket for assets |
+| `GOOGLE_MAPS_API_KEY` | No | For static map generation |
 
-## ADK Artifacts
+## Learn More
 
-Generated content is saved as ADK artifacts for viewing in the web UI:
-- Video ads (MP4)
-- Generated seed images (PNG)
-- Chart visualizations (PNG)
-- Map visualizations (PNG)
+- [ADK Documentation](https://google.github.io/adk-docs/)
+- [Veo 3.1 API](https://cloud.google.com/vertex-ai/generative-ai/docs/video/overview)
+- [Gemini API](https://ai.google.dev/gemini-api/docs)
 
 ## License
 
-Apache License 2.0 - See [LICENSE](../LICENSE)
+Apache License 2.0

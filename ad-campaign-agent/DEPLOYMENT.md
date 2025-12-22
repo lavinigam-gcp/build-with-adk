@@ -1,125 +1,93 @@
-# Ad Campaign Agent - Cloud Run Deployment Guide
+# Deployment Guide
 
-This guide covers deploying the Ad Campaign Agent to Google Cloud Run.
+This guide covers deploying the Ad Campaign Agent to Google Cloud. Choose the deployment option that fits your use case.
+
+## Deployment Options
+
+| Option | Best For | Web UI | Session Management | Scaling |
+|--------|----------|--------|-------------------|---------|
+| **Cloud Run** | Development, demos, Web UI access | Yes (`/dev-ui`) | Manual (in-memory) | Configurable |
+| **Agent Engine** | Production, API access | No (API only) | Managed by Vertex AI | Automatic |
+
+---
 
 ## Prerequisites
 
-### 1. Required Tools
+### Required Tools
 
 ```bash
-# Google Cloud SDK
-gcloud --version
-
-# ADK CLI
-adk --version
-
-# Python 3.11+
-python3 --version
+# Verify installations
+gcloud --version    # Google Cloud SDK
+adk --version       # ADK CLI (pip install google-adk)
+python3 --version   # Python 3.11+
 ```
 
-### 2. GCP Authentication
+### GCP Authentication
 
 ```bash
-# Login to GCP
+# Login and set project
 gcloud auth login
-
-# Set application default credentials (for local testing)
 gcloud auth application-default login
-
-# Set your project
-gcloud config set project kaggle-on-gcp
+gcloud config set project YOUR_PROJECT_ID
 ```
 
-## GCP Setup (One-Time)
-
-### 1. Enable Required APIs
+### Required APIs
 
 ```bash
 gcloud services enable \
   run.googleapis.com \
   storage.googleapis.com \
   aiplatform.googleapis.com \
-  maps-backend.googleapis.com \
-  --project=kaggle-on-gcp
+  maps-backend.googleapis.com
 ```
 
-### 2. Create GCS Bucket
+---
+
+## Initial Setup (One-Time)
+
+### 1. Create GCS Bucket
 
 ```bash
 # Create bucket for assets
-gcloud storage buckets create gs://kaggle-on-gcp-ad-campaign-assets \
-  --project=kaggle-on-gcp \
+gcloud storage buckets create gs://YOUR_BUCKET_NAME \
   --location=us-central1 \
   --uniform-bucket-level-access
 ```
 
-### 3. Upload Demo Assets
+### 2. Upload Product Images
+
+Product images must be in GCS for video generation to work:
 
 ```bash
-# Run the setup script (creates bucket and uploads assets)
+# Using the setup script (recommended)
 ./scripts/setup_gcp.sh
+
+# Or manually upload
+gcloud storage cp path/to/images/* gs://YOUR_BUCKET_NAME/product-images/
 ```
 
-Or manually:
-```bash
-# Upload seed images
-gcloud storage cp selected/* gs://kaggle-on-gcp-ad-campaign-assets/seed-images/
+### 3. Verify Setup
 
-# Upload generated videos (if any)
-gcloud storage cp generated/*.mp4 gs://kaggle-on-gcp-ad-campaign-assets/generated/
+```bash
+# List uploaded images
+gcloud storage ls gs://YOUR_BUCKET_NAME/product-images/
 ```
 
-### 4. Verify Assets
+---
+
+## Cloud Run Deployment
+
+Cloud Run provides a web UI at `/dev-ui` for interactive testing.
+
+### Quick Deploy
 
 ```bash
-# List seed images
-gcloud storage ls gs://kaggle-on-gcp-ad-campaign-assets/seed-images/
+# Set environment variables
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GCS_BUCKET="your-bucket-name"
+export GOOGLE_MAPS_API_KEY="your-maps-key"  # Optional
 
-# List generated videos
-gcloud storage ls gs://kaggle-on-gcp-ad-campaign-assets/generated/
-```
-
-## Environment Variables
-
-### Required for Deployment
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `MAPS_API_KEY` | Google Maps API key for location features | `AIzaSy...` |
-
-### Set Before Deploying
-
-```bash
-# Google Maps API Key (get from GCP Console > APIs & Services > Credentials)
-export MAPS_API_KEY="your-google-maps-api-key"
-```
-
-### Auto-Set by Deploy Script
-
-These are automatically configured by `deploy.sh`:
-
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `GCS_BUCKET` | `kaggle-on-gcp-ad-campaign-assets` | Asset storage |
-| `GOOGLE_GENAI_USE_VERTEXAI` | `True` | Use Vertex AI |
-| `GOOGLE_CLOUD_PROJECT` | `kaggle-on-gcp` | GCP project |
-| `GOOGLE_CLOUD_LOCATION` | `global` | Vertex AI location |
-
-## Deployment
-
-### Step-by-Step
-
-```bash
-# 1. Navigate to agent directory
-cd ad-campaign-agent
-
-# 2. Set Maps API Key
-export MAPS_API_KEY="your-google-maps-api-key"
-
-# 3. Deploy (with trace for debugging)
-./scripts/deploy.sh --trace
-
-# Or deploy without trace
+# Deploy
 ./scripts/deploy.sh
 ```
 
@@ -130,148 +98,288 @@ export MAPS_API_KEY="your-google-maps-api-key"
 
 Options:
   --trace       Enable Cloud Trace for observability
-  --private     Deploy without public access (requires authentication)
-  --dry-run     Show deployment command without executing
+  --private     Require authentication (no public access)
+  --dry-run     Show command without executing
   --help        Show help message
 ```
 
-### What the Deploy Script Does
+### What Gets Deployed
 
-1. Validates prerequisites (gcloud, adk)
-2. Sets environment variables for Cloud Run
-3. Configures GCS for artifact storage
-4. Deploys with `adk deploy cloud_run`
-5. Enables public access (default)
-6. Shows service URL when complete
+The script packages the `app/` folder and deploys it with:
 
-## Post-Deployment
+- ADK Web UI enabled (`--with_ui`)
+- GCS for artifact storage
+- 2GB memory, 2 CPU (for video processing)
+- 600s timeout (for long video generation)
+- Public access by default
 
-### Verify Deployment
+### Post-Deployment
 
 ```bash
-# Check service status
+# Get service URL
 gcloud run services describe ad-campaign-agent \
-  --project=kaggle-on-gcp \
-  --region=us-central1
+  --region=us-central1 \
+  --format='value(status.url)'
 
 # View logs
 gcloud run services logs read ad-campaign-agent \
-  --project=kaggle-on-gcp \
-  --region=us-central1 \
-  --limit=50
+  --region=us-central1 --limit=50
 ```
 
-### Access the Service
+### Access Points
 
-After deployment, you'll get URLs like:
-- **API**: `https://ad-campaign-agent-xxxxx.us-central1.run.app`
-- **Web UI**: `https://ad-campaign-agent-xxxxx.us-central1.run.app/dev-ui`
+After deployment:
 
-### Test the Agent
+- **Web UI**: `https://your-service-url/dev-ui`
+- **API**: `https://your-service-url`
 
-1. Open the Web UI URL in your browser
-2. Try: "List all campaigns"
-3. Try: "Generate a video ad for campaign 1"
-4. Try: "Show campaign locations on a map"
+---
+
+## Agent Engine Deployment
+
+Agent Engine is Google Cloud's managed service for production AI agents.
+
+### Benefits
+
+- **Managed Sessions**: Automatic session and state management
+- **Memory Bank**: Persistent memory across conversations
+- **Auto-Scaling**: No container management needed
+- **Query API**: Programmatic access
+
+### Quick Deploy
+
+```bash
+# Deploy to Agent Engine
+./scripts/deploy_ae.sh
+
+# With Cloud Trace
+./scripts/deploy_ae.sh --trace
+
+# Preview only
+./scripts/deploy_ae.sh --dry-run
+```
+
+### Deploy Script Options
+
+```bash
+./scripts/deploy_ae.sh [OPTIONS]
+
+Options:
+  --dry-run              Show command without executing
+  --trace                Enable Cloud Trace
+  --update               Update existing deployment
+  --agent-engine-id=ID   Specify Agent Engine ID to update
+  --help                 Show help message
+```
+
+### Query Your Agent
+
+**Python:**
+
+```python
+import vertexai
+from vertexai import agent_engines
+
+vertexai.init(project="your-project-id", location="us-central1")
+agent = agent_engines.get("YOUR_AGENT_ENGINE_ID")
+
+# Single query
+response = agent.query(input="List all campaigns")
+print(response)
+
+# Streaming
+for chunk in agent.stream_query(input="Show campaign metrics"):
+    print(chunk, end="")
+```
+
+**REST API:**
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+
+curl -X POST \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/reasoningEngines/YOUR_AGENT_ID:query" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "List all campaigns"}'
+```
+
+### Manage Deployments
+
+```bash
+# List deployed agents
+gcloud ai reasoning-engines list --region=us-central1
+
+# Update existing deployment
+./scripts/deploy_ae.sh --agent-engine-id=YOUR_AGENT_ID
+
+# Delete deployment
+gcloud ai reasoning-engines delete YOUR_AGENT_ID --region=us-central1
+```
+
+---
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID |
+| `GCS_BUCKET` | GCS bucket for assets |
+
+### Optional
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_MAPS_API_KEY` | For static map generation |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI region (default: `global`) |
+
+### Auto-Configured by Deploy Scripts
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `GOOGLE_GENAI_USE_VERTEXAI` | `True` | Use Vertex AI |
+| `K_SERVICE` | (Cloud Run sets this) | Detect Cloud Run environment |
+| `GOOGLE_CLOUD_AGENT_ENGINE_ID` | (Agent Engine sets this) | Detect Agent Engine environment |
+
+---
+
+## Storage Structure
+
+```plaintext
+gs://YOUR_BUCKET/
+├── product-images/        # Source product images (22 items)
+│   ├── blue-floral-maxi-dress.jpg
+│   ├── elegant-black-cocktail-dress.jpg
+│   └── ...
+├── seed-images/           # Legacy location (deprecated)
+└── generated/             # Generated videos and thumbnails
+    ├── campaign_1_ad_5.mp4
+    ├── campaign_1_ad_5_thumb.png
+    └── ...
+```
+
+---
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### 1. Model Not Found (404)
-```
+**Model Not Found (404)**
+
+```text
 Publisher Model `gemini-3-pro-preview` was not found
 ```
-**Fix**: Ensure `GOOGLE_CLOUD_LOCATION=global` is set (not `us-central1`)
 
-#### 2. Permission Denied on `/app/agents/`
-```
+Fix: Ensure `GOOGLE_CLOUD_LOCATION=global` (some models require this).
+
+**Permission Denied on `/app/agents/`**
+
+```text
 PermissionError: [Errno 13] Permission denied: '/app/agents/.adk'
 ```
-**Fix**: Deploy script now uses `--artifact_service_uri=gs://bucket` for GCS artifacts
 
-#### 3. PIL/Pillow Not Found
-```
+Fix: Deploy scripts now use `--artifact_service_uri=gs://bucket` for GCS-based artifacts.
+
+**PIL/Pillow Not Found**
+
+```text
 No module named 'PIL'
 ```
-**Fix**: Ensure `requirements.txt` is in the `app/` folder (not just project root)
 
-#### 4. Maps API Not Working
-```
+Fix: Ensure `requirements.txt` is in the `app/` folder with `Pillow>=10.2.0`.
+
+**Maps API Not Working**
+
+```text
 GOOGLE_MAPS_API_KEY environment variable not set
 ```
-**Fix**: Export `MAPS_API_KEY` before running deploy.sh
 
-### View Detailed Logs
+Fix: Export `GOOGLE_MAPS_API_KEY` before deploying. AI-generated maps work without this key.
 
-```bash
-# Stream logs in real-time
-gcloud run services logs tail ad-campaign-agent \
-  --project=kaggle-on-gcp \
-  --region=us-central1
+**Video Generation Timeouts**
 
-# View logs in Cloud Console
-open "https://console.cloud.google.com/run/detail/us-central1/ad-campaign-agent/logs?project=kaggle-on-gcp"
-```
+Veo 3.1 takes 2-3 minutes per video. The deploy script sets a 600s timeout.
 
-## Update Deployment
-
-To redeploy after code changes:
+### View Logs
 
 ```bash
-export MAPS_API_KEY="your-google-maps-api-key"
-./scripts/deploy.sh --trace
+# Cloud Run - real-time
+gcloud run services logs tail ad-campaign-agent --region=us-central1
+
+# Cloud Run - recent logs
+gcloud run services logs read ad-campaign-agent --region=us-central1 --limit=100
+
+# Cloud Console
+open "https://console.cloud.google.com/run/detail/us-central1/ad-campaign-agent/logs"
 ```
 
-## Delete Deployment
+---
 
-```bash
-gcloud run services delete ad-campaign-agent \
-  --project=kaggle-on-gcp \
-  --region=us-central1
-```
-
-## Configuration Reference
-
-### Key Files
+## Key Files
 
 | File | Purpose |
 |------|---------|
-| `app/config.py` | App configuration (models, GCS bucket) |
+| `app/agent.py` | Agent definitions (root_agent) |
+| `app/config.py` | Models, paths, environment detection |
 | `app/requirements.txt` | Python dependencies |
-| `scripts/deploy.sh` | Deployment script |
+| `scripts/deploy.sh` | Cloud Run deployment |
+| `scripts/deploy_ae.sh` | Agent Engine deployment |
 | `scripts/setup_gcp.sh` | GCP resource setup |
 
-### Models Used
+---
+
+## Models Used
 
 | Purpose | Model |
 |---------|-------|
-| Main Agent | `gemini-3-pro-preview` |
-| Video Analysis | `gemini-2.5-pro` |
-| Image Analysis | `gemini-2.0-flash` |
-| Image Generation | `gemini-3-pro-image-preview` |
-| Video Generation | `veo-3.1-generate-preview` |
+| Agent Reasoning | `gemini-2.5-pro` |
+| Scene Image Generation | `gemini-2.5-flash-image` |
+| Video Animation | `veo-3.1-generate-preview` |
+| Charts & Maps | `gemini-2.5-flash-image` |
 
-### Storage Structure
-
-```
-gs://kaggle-on-gcp-ad-campaign-assets/
-├── seed-images/           # Input fashion images
-│   ├── dress_*.jpg
-│   ├── top_*.jpg
-│   └── generated_seed_*.png
-└── generated/             # Generated video ads
-    └── campaign_*_ad_*.mp4
-```
+---
 
 ## Quick Reference
 
+### Cloud Run (Full Deploy)
+
 ```bash
-# Full deployment from scratch
 gcloud auth login
 gcloud auth application-default login
-gcloud config set project kaggle-on-gcp
+gcloud config set project YOUR_PROJECT
 ./scripts/setup_gcp.sh
-export MAPS_API_KEY="your-key"
+export GOOGLE_MAPS_API_KEY="your-key"
 ./scripts/deploy.sh --trace
+```
+
+### Agent Engine (Full Deploy)
+
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT
+./scripts/setup_gcp.sh
+./scripts/deploy_ae.sh --trace
+```
+
+### Update Deployment
+
+```bash
+# Cloud Run - just redeploy
+./scripts/deploy.sh
+
+# Agent Engine - update existing
+./scripts/deploy_ae.sh --agent-engine-id=YOUR_ID
+```
+
+### Delete Deployment
+
+```bash
+# Cloud Run
+gcloud run services delete ad-campaign-agent --region=us-central1
+
+# Agent Engine
+gcloud ai reasoning-engines delete YOUR_ID --region=us-central1
 ```

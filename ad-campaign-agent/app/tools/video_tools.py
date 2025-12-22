@@ -1703,36 +1703,48 @@ async def get_video_properties(ad_id: int) -> dict:
 # Product and Video Listing Functions
 # =============================================================================
 
-def list_products(category: str = None) -> dict:
+def list_products(category: str = None, include_urls: bool = True) -> dict:
     """List all available products for video generation.
 
     Products are pre-loaded from the products table (22 products).
+    Includes public GCS URLs for product images when available.
 
     Args:
         category: Optional category filter (dress, top, pants, outerwear, skirt)
+        include_urls: Whether to include public image URLs (default: True)
 
     Returns:
-        Dictionary with list of products
+        Dictionary with list of products including image URLs
     """
     from ..database.db import list_products as db_list_products
 
     products = db_list_products(category)
 
+    product_list = []
+    for p in products:
+        product_data = {
+            "id": p["id"],
+            "name": p["name"],
+            "category": p["category"],
+            "style": p["style"],
+            "color": p["color"],
+            "fabric": p["fabric"],
+            "image_filename": p["image_filename"]
+        }
+
+        # Add public URL for product image
+        if include_urls and p["image_filename"]:
+            image_url = storage.get_public_url(f"product-images/{p['image_filename']}")
+            if image_url:
+                product_data["image_url"] = image_url
+
+        product_list.append(product_data)
+
     return {
         "status": "success",
-        "product_count": len(products),
-        "products": [
-            {
-                "id": p["id"],
-                "name": p["name"],
-                "category": p["category"],
-                "style": p["style"],
-                "color": p["color"],
-                "fabric": p["fabric"],
-                "image_filename": p["image_filename"]
-            }
-            for p in products
-        ]
+        "product_count": len(product_list),
+        "products": product_list,
+        "note": "Click image_url links to view product images in browser"
     }
 
 

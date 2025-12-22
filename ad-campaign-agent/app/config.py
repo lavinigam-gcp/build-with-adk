@@ -18,10 +18,11 @@ import os
 
 # Model configuration
 # Agent models
-MODEL = "gemini-3-flash-preview"  # Main agent model (gemini-2.5-flash, gemini-3-pro-preview, gemini-2.5-pro, gemini-3-flash-preview)
+# NOTE: Using models available in us-central1 for Agent Engine compatibility
+MODEL = "gemini-2.5-pro"  # Main agent model
 
 # Media generation models
-IMAGE_GENERATION = "gemini-3-pro-image-preview"  # For scene image generation (Stage 1)
+IMAGE_GENERATION = "gemini-2.5-flash-image"  # For scene image generation (Stage 1)
 VEO_MODEL = "veo-3.1-generate-preview"  # For video animation (Stage 2)
 
 # Video configuration
@@ -34,6 +35,12 @@ GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY") or os.environ.get("M
 
 # Cloud Run detection
 IS_CLOUD_RUN = os.environ.get("K_SERVICE") is not None
+
+# Agent Engine detection (set by Vertex AI Agent Engine runtime)
+IS_AGENT_ENGINE = os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID") is not None
+
+# Combined: running in any managed cloud environment
+IS_CLOUD_ENVIRONMENT = IS_CLOUD_RUN or IS_AGENT_ENGINE
 
 # GCS configuration - Always use GCS for storage (local and cloud)
 # This ensures consistent behavior between local development and Cloud Run
@@ -56,7 +63,12 @@ GENERATED_DIR = os.path.join(PROJECT_DIR, "generated")
 # Database path
 # - Local development: Use project root (persistent across runs)
 # - Cloud Run: Use app directory (ephemeral, mock data repopulates on each container start)
-if IS_CLOUD_RUN:
+# - Agent Engine: Use /tmp (ephemeral, writable in managed container)
+if IS_AGENT_ENGINE:
+    # Agent Engine: /tmp is guaranteed writable in the managed container
+    # Database is ephemeral - mock data repopulates on each instance
+    DB_PATH = "/tmp/campaigns.db"
+elif IS_CLOUD_RUN:
     # In Cloud Run, the container has the app/ folder as working context
     # Use a path inside the deployed directory
     DB_PATH = os.path.join(BASE_DIR, "campaigns.db")

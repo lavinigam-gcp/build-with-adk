@@ -103,8 +103,17 @@ from .tools.maps_tools import (
 )
 
 # Initialize database and populate mock data on import
-init_database()
-populate_mock_data()
+# Wrapped in try-except for better error reporting in Agent Engine
+import sys
+from .config import DB_PATH
+try:
+    init_database()
+    populate_mock_data()
+except Exception as e:
+    print(f"[Agent Init] Database initialization error: {e}", file=sys.stderr)
+    print(f"[Agent Init] DB_PATH attempted: {DB_PATH}", file=sys.stderr)
+    # Re-raise to fail fast with clear error
+    raise
 
 # =============================================================================
 # Campaign Agent - Handles campaign CRUD and location features

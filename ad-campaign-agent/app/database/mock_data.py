@@ -12,299 +12,105 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Mock data population for the Ad Campaign Agent demo."""
+"""Mock data population for the Ad Campaign Agent demo.
+
+Uses NEW schema (product-centric model):
+- products: 22 pre-loaded fashion products
+- campaigns: Each campaign = 1 product + 1 store location
+- campaign_videos: Videos with HITL lifecycle status
+- video_metrics: Metrics only for activated videos
+"""
 
 import json
 import random
 from datetime import datetime, timedelta
 from .db import get_connection
+from .products_data import PRODUCTS
 
 
-def generate_mock_video_properties(image_metadata: dict, campaign_name: str) -> dict:
-    """Generate mock video properties based on image metadata.
+# =============================================================================
+# Product-Centric Campaign Definitions (NEW MODEL)
+# =============================================================================
+# Each campaign = 1 product + 1 store location
+# Campaign name auto-generated: "{Product Name} - {Store Name}"
 
-    Args:
-        image_metadata: The image metadata dictionary
-        campaign_name: The campaign name for context
-
-    Returns:
-        Dictionary of mock video properties
-    """
-    # Map moods from image metadata to VideoProperties enum values
-    mood_mapping = {
-        "dreamy, romantic, aspirational": "romantic",
-        "elegant, sophisticated, glamorous": "sophisticated",
-        "bold, modern, confident": "bold",
-        "confident, professional, chic": "sophisticated",
-        "playful, feminine, cosmopolitan": "playful",
-        "sophisticated, minimalist, polished": "elegant",
-        "cozy, intellectual, warm": "warm",
-    }
-
-    raw_mood = image_metadata.get("mood", "elegant")
-    mood = mood_mapping.get(raw_mood, "elegant")
-
-    # Determine energy level based on movement description
-    movement = image_metadata.get("movement", "")
-    if "confidently" in movement or "dynamically" in movement or "strides" in movement:
-        energy_level = "dynamic"
-    elif "gracefully" in movement or "gently" in movement or "subtly" in movement:
-        energy_level = "moderate"
-    elif "twirls" in movement:
-        energy_level = "dynamic"
-    else:
-        energy_level = "moderate"
-
-    # Determine camera movement based on camera_style
-    camera_style = image_metadata.get("camera_style", "")
-    if "circles" in camera_style or "orbits" in camera_style:
-        camera_movement = "orbit"
-    elif "pans" in camera_style:
-        camera_movement = "pan"
-    elif "tracks" in camera_style or "follows" in camera_style:
-        camera_movement = "track"
-    elif "zooms" in camera_style:
-        camera_movement = "slow_zoom"
-    else:
-        camera_movement = "orbit"
-
-    # Determine setting type from setting_description
-    setting_desc = image_metadata.get("setting_description", "").lower()
-    if "studio" in setting_desc:
-        setting_type = "studio"
-        lighting_style = "studio"
-    elif "outdoor" in setting_desc or "meadow" in setting_desc or "field" in setting_desc:
-        setting_type = "outdoor"
-        lighting_style = "natural"
-    elif "urban" in setting_desc or "street" in setting_desc or "city" in setting_desc:
-        setting_type = "urban"
-        lighting_style = "natural"
-    elif "night" in setting_desc:
-        setting_type = "urban"
-        lighting_style = "dramatic"
-    else:
-        setting_type = "studio"
-        lighting_style = "studio"
-
-    # Determine time of day
-    if "golden hour" in setting_desc or "sun-drenched" in setting_desc or "sunny" in setting_desc:
-        time_of_day = "golden_hour"
-    elif "night" in setting_desc:
-        time_of_day = "night"
-    else:
-        time_of_day = "day"
-
-    # Color temperature based on mood
-    if mood in ["warm", "romantic"]:
-        color_temperature = "warm"
-    elif mood in ["bold", "sophisticated"]:
-        color_temperature = "neutral"
-    else:
-        color_temperature = "neutral"
-
-    # Determine warmth
-    has_warmth = mood in ["warm", "romantic", "playful"] or "warm" in setting_desc.lower()
-
-    # Extract colors from clothing description
-    clothing_desc = image_metadata.get("clothing_description", "").lower()
-    dominant_colors = []
-    color_keywords = ["red", "blue", "green", "pink", "white", "beige", "olive", "black", "gold"]
-    for color in color_keywords:
-        if color in clothing_desc:
-            dominant_colors.append(color)
-    if not dominant_colors:
-        dominant_colors = ["neutral"]
-
-    # Build style tags
-    style_tags = ["fashion", "professional"]
-    if "Summer" in campaign_name:
-        style_tags.extend(["summer", "breezy", "casual"])
-    elif "Evening" in campaign_name or "Formal" in campaign_name:
-        style_tags.extend(["formal", "evening", "elegant"])
-    elif "Professional" in campaign_name:
-        style_tags.extend(["business", "professional", "chic"])
-    elif "Fall" in campaign_name:
-        style_tags.extend(["autumn", "cozy", "layering"])
-
-    return {
-        "mood": mood,
-        "mood_intensity": round(random.uniform(0.6, 0.9), 2),
-        "has_warmth": has_warmth,
-        "visual_style": "cinematic",
-        "camera_movement": camera_movement,
-        "lighting_style": lighting_style,
-        "energy_level": energy_level,
-        "movement_amount": round(random.uniform(0.4, 0.7), 2),
-        "color_temperature": color_temperature,
-        "dominant_colors": dominant_colors,
-        "color_saturation": round(random.uniform(0.6, 0.8), 2),
-        "subject_count": 1,
-        "garment_visibility": round(random.uniform(0.7, 0.9), 2),
-        "has_multiple_outfits": False,
-        "audio_type": "none",
-        "has_dialogue": False,
-        "music_tempo": None,
-        "audio_mood": None,
-        "style_tags": style_tags,
-        "quality_score": round(random.uniform(0.7, 0.9), 2),
-        "setting_type": setting_type,
-        "time_of_day": time_of_day,
-        "background_complexity": round(random.uniform(0.2, 0.5), 2),
-        "aspect_ratio": "9:16",
-        "has_text_overlays": False,
-        "has_brand_elements": False
-    }
-
-# Pre-defined campaigns matching the seed images
 MOCK_CAMPAIGNS = [
     {
-        "name": "Summer Blooms 2025",
-        "description": "Light and breezy summer dresses for the fashion-forward woman",
-        "category": "summer",
+        "product_name": "blue-floral-maxi-dress",
+        "store_name": "Westfield Century City",
         "city": "Los Angeles",
         "state": "CA",
+        "category": "summer",
         "status": "active",
-        "images": [
-            {
-                "filename": "dress_summer_dress_004.jpg",
-                "metadata": {
-                    "model_description": "a woman with blonde hair",
-                    "clothing_description": "a flowing floral wrap dress in pink and white",
-                    "setting_description": "In a sun-drenched meadow with wildflowers",
-                    "garment_type": "summer dress",
-                    "movement": "billows gracefully in the breeze",
-                    "camera_style": "slowly pans around",
-                    "key_feature": "vibrant floral pattern against golden hour light",
-                    "mood": "dreamy, romantic, aspirational"
-                }
-            }
-        ]
     },
     {
-        "name": "Evening Elegance Collection",
-        "description": "Sophisticated formal wear for special occasions",
-        "category": "formal",
+        "product_name": "elegant-black-cocktail-dress",
+        "store_name": "Bloomingdale's 59th Street",
         "city": "New York",
         "state": "NY",
+        "category": "formal",
         "status": "active",
-        "images": [
-            {
-                "filename": "dress_formal_dress_002.jpg",
-                "metadata": {
-                    "model_description": "a woman with red hair",
-                    "clothing_description": "a striking red floral fitted gown",
-                    "setting_description": "In an elegant studio with soft lighting",
-                    "garment_type": "formal gown",
-                    "movement": "poses elegantly with subtle movements",
-                    "camera_style": "smoothly circles",
-                    "key_feature": "intricate red floral pattern and form-fitting silhouette",
-                    "mood": "elegant, sophisticated, glamorous"
-                }
-            },
-            {
-                "filename": "dress_formal_dress_003.jpg",
-                "metadata": {
-                    "model_description": "a woman with dark hair",
-                    "clothing_description": "an olive green strapless bandage dress",
-                    "setting_description": "Under city lights at night with an urban backdrop",
-                    "garment_type": "bandage dress",
-                    "movement": "walks confidently through the scene",
-                    "camera_style": "follows dynamically",
-                    "key_feature": "sleek bandage construction and bold color",
-                    "mood": "bold, modern, confident"
-                }
-            }
-        ]
     },
     {
-        "name": "Urban Professional",
-        "description": "Contemporary business casual for the modern professional",
-        "category": "professional",
+        "product_name": "black-high-waist-trousers",
+        "store_name": "Water Tower Place",
         "city": "Chicago",
         "state": "IL",
+        "category": "professional",
         "status": "active",
-        "images": [
-            {
-                "filename": "top_blouse_002.jpg",
-                "metadata": {
-                    "model_description": "a stylish woman wearing sunglasses",
-                    "clothing_description": "a crisp white classic button-down shirt",
-                    "setting_description": "On a sunny urban street with modern architecture",
-                    "garment_type": "classic blouse",
-                    "movement": "strides confidently down the street",
-                    "camera_style": "tracks alongside",
-                    "key_feature": "clean lines and timeless white fabric",
-                    "mood": "confident, professional, chic"
-                }
-            },
-            {
-                "filename": "top_blouse_003.jpg",
-                "metadata": {
-                    "model_description": "a woman with brunette hair",
-                    "clothing_description": "a light blue cinched waist blouse",
-                    "setting_description": "In a charming European city square",
-                    "garment_type": "fitted blouse",
-                    "movement": "twirls gently to show the silhouette",
-                    "camera_style": "orbits gracefully",
-                    "key_feature": "flattering cinched waist and soft blue color",
-                    "mood": "playful, feminine, cosmopolitan"
-                }
-            },
-            {
-                "filename": "top_blouse_004.jpg",
-                "metadata": {
-                    "model_description": "a model with a minimalist aesthetic",
-                    "clothing_description": "a beige oversized blazer",
-                    "setting_description": "In a clean, minimalist studio space",
-                    "garment_type": "oversized blazer",
-                    "movement": "adjusts the blazer with subtle gestures",
-                    "camera_style": "slowly zooms in",
-                    "key_feature": "luxurious oversized fit and neutral beige tone",
-                    "mood": "sophisticated, minimalist, polished"
-                }
-            }
-        ]
     },
     {
-        "name": "Fall Essentials",
-        "description": "Cozy knits and layering pieces for the autumn season",
-        "category": "essentials",
-        "city": "Seattle",
-        "state": "WA",
-        "status": "draft",
-        "images": [
-            {
-                "filename": "top_sweater_003.jpg",
-                "metadata": {
-                    "model_description": "a woman wearing glasses with an intellectual look",
-                    "clothing_description": "a beige ribbed turtleneck sweater",
-                    "setting_description": "In a cozy studio with warm lighting",
-                    "garment_type": "turtleneck sweater",
-                    "movement": "adjusts glasses while showing the sweater texture",
-                    "camera_style": "slowly pulls back",
-                    "key_feature": "rich ribbed texture and warm neutral color",
-                    "mood": "cozy, intellectual, warm"
-                }
-            }
-        ]
-    }
+        "product_name": "emerald-satin-slip-dress",
+        "store_name": "The Grove",
+        "city": "Los Angeles",
+        "state": "CA",
+        "category": "formal",
+        "status": "active",
+    },
+]
+
+# Variation presets for mock videos
+MOCK_VARIATIONS = [
+    {"model_ethnicity": "asian", "setting": "beach", "mood": "elegant", "time_of_day": "golden-hour"},
+    {"model_ethnicity": "european", "setting": "urban", "mood": "sophisticated", "time_of_day": "day"},
+    {"model_ethnicity": "african", "setting": "studio", "mood": "bold", "time_of_day": "day"},
+    {"model_ethnicity": "latina", "setting": "rooftop", "mood": "romantic", "time_of_day": "sunset"},
 ]
 
 
-def generate_mock_metrics(campaign_id: int, ad_id: int, days: int = 90) -> list:
-    """Generate realistic in-store retail media metrics for a campaign.
+def _get_product_by_name(product_name: str) -> dict:
+    """Find a product by its hyphenated name."""
+    for product in PRODUCTS:
+        if product["name"] == product_name:
+            return product
+    return None
+
+
+def _generate_campaign_name(product_name: str, store_name: str) -> str:
+    """Generate campaign name from product and store.
+
+    Example: "blue-floral-maxi-dress" + "Westfield Century City"
+             -> "Blue Floral Maxi Dress - Westfield Century City"
+    """
+    # Convert hyphenated name to title case
+    product_title = product_name.replace("-", " ").title()
+    return f"{product_title} - {store_name}"
+
+
+def _generate_mock_video_metrics(video_id: int, campaign_id: int, days: int = 30) -> list:
+    """Generate realistic in-store retail media metrics for an activated video.
 
     Metrics generated:
-    - impressions: Number of ad displays on in-store screens
-    - dwell_time: Average seconds viewing (2-15 seconds typical)
-    - circulation: Foot traffic past display location
-    - revenue: Revenue for RPI calculation
+    - impressions: Number of ad displays on in-store screens (800-2000/day)
+    - dwell_time_seconds: Average seconds viewing (3-8 seconds)
+    - circulation: Foot traffic past display location (1500-4000/day)
+    - revenue: Revenue for RPI calculation ($30-$120/day)
 
     RPI (revenue_per_impression) is computed on-the-fly as revenue/impressions.
 
     Args:
-        campaign_id: The campaign ID
-        ad_id: The ad ID (can be None for campaign-level metrics)
+        video_id: The video ID in campaign_videos table
+        campaign_id: The campaign ID for location multiplier
         days: Number of days of metrics to generate
 
     Returns:
@@ -315,16 +121,16 @@ def generate_mock_metrics(campaign_id: int, ad_id: int, days: int = 90) -> list:
 
     # Campaign-specific multipliers (some stores perform better)
     campaign_multipliers = {
-        1: 1.2,   # Summer Blooms - LA flagship store
-        2: 0.9,   # Evening Elegance - NYC boutique
-        3: 1.0,   # Urban Professional - Chicago
-        4: 0.7,   # Fall Essentials - Seattle (draft)
+        1: 1.2,   # Los Angeles flagship store
+        2: 0.9,   # NYC boutique
+        3: 1.0,   # Chicago baseline
+        4: 0.7,   # Smaller market
     }
     multiplier = campaign_multipliers.get(campaign_id, 1.0)
 
     # Base metrics for in-store retail
-    base_impressions = int(random.randint(15000, 35000) * multiplier)
-    base_circulation = int(base_impressions * random.uniform(2.0, 3.5))
+    base_impressions = int(random.randint(800, 2000) * multiplier)
+    base_circulation = int(base_impressions * random.uniform(1.5, 2.5))
 
     for day_offset in range(days):
         date = today - timedelta(days=day_offset)
@@ -333,31 +139,27 @@ def generate_mock_metrics(campaign_id: int, ad_id: int, days: int = 90) -> list:
         day_of_week = date.weekday()
         weekend_boost = 1.4 if day_of_week >= 5 else 1.0
 
-        # Seasonal trends (slight decrease over time for older data)
-        trend_factor = 1 + (day_offset * 0.002)
-
         # Daily variation
-        daily_variation = random.uniform(0.8, 1.2)
+        daily_variation = random.uniform(0.85, 1.15)
 
         # Calculate metrics
-        impressions = int(base_impressions * weekend_boost * daily_variation / trend_factor)
+        impressions = int(base_impressions * weekend_boost * daily_variation)
         circulation = int(base_circulation * weekend_boost * random.uniform(0.9, 1.1))
 
-        # Dwell time: 2-15 seconds, weekend shoppers browse longer
+        # Dwell time: 3-8 seconds, weekend shoppers browse longer
         base_dwell = random.uniform(3.0, 8.0)
-        weekend_dwell_boost = 1.3 if day_of_week >= 5 else 1.0
-        dwell_time = round(min(base_dwell * weekend_dwell_boost, 15.0), 1)
+        weekend_dwell_boost = 1.2 if day_of_week >= 5 else 1.0
+        dwell_time = round(min(base_dwell * weekend_dwell_boost, 12.0), 1)
 
         # Revenue: $0.02-$0.08 per impression for retail media
         revenue_per_impression = random.uniform(0.02, 0.08) * multiplier
         revenue = round(impressions * revenue_per_impression, 2)
 
         metrics.append({
-            "campaign_id": campaign_id,
-            "ad_id": ad_id,
-            "date": date.isoformat(),
+            "video_id": video_id,
+            "metric_date": date.isoformat(),
             "impressions": impressions,
-            "dwell_time": dwell_time,
+            "dwell_time_seconds": dwell_time,
             "circulation": circulation,
             "revenue": revenue
         })
@@ -366,9 +168,15 @@ def generate_mock_metrics(campaign_id: int, ad_id: int, days: int = 90) -> list:
 
 
 def populate_mock_data() -> dict:
-    """Populate the database with mock campaign data.
+    """Populate the database with mock data using NEW schema.
 
-    Creates 4 campaigns with seed images and 90 days of mock metrics each.
+    Creates:
+    - 22 products (from products_data.py)
+    - 4 product-centric campaigns
+    - 1 activated video per campaign
+    - 30 days of metrics per activated video
+
+    IMPORTANT: Skips if data already exists (safe to call multiple times).
 
     Returns:
         Dictionary with counts of created records
@@ -376,94 +184,133 @@ def populate_mock_data() -> dict:
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Check if data already exists
+    # Check if data already exists - check BOTH old and new tables
     cursor.execute("SELECT COUNT(*) FROM campaigns")
-    if cursor.fetchone()[0] > 0:
+    campaign_count = cursor.fetchone()[0]
+
+    if campaign_count > 0:
         conn.close()
         return {"status": "skipped", "message": "Mock data already exists"}
 
+    products_created = 0
     campaigns_created = 0
-    images_created = 0
-    ads_created = 0
+    videos_created = 0
     metrics_created = 0
 
-    for campaign_data in MOCK_CAMPAIGNS:
-        # Insert campaign
+    # Step 1: Insert all 22 products
+    # Use INSERT OR IGNORE to handle multi-process race conditions (Agent Engine)
+    for product in PRODUCTS:
         cursor.execute('''
-            INSERT INTO campaigns (name, description, category, city, state, status)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO products (name, category, style, color, fabric, details, occasion, image_filename, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            campaign_data["name"],
-            campaign_data["description"],
-            campaign_data["category"],
-            campaign_data["city"],
-            campaign_data["state"],
-            campaign_data["status"]
+            product["name"],
+            product["category"],
+            product.get("style", ""),
+            product.get("color", ""),
+            product.get("fabric", ""),
+            product.get("details", ""),
+            product.get("occasion", ""),
+            product["image_filename"],
+            json.dumps(product)
+        ))
+        products_created += 1
+
+    # Step 2: Create product-centric campaigns
+    for i, camp_data in enumerate(MOCK_CAMPAIGNS):
+        # Find the product
+        product = _get_product_by_name(camp_data["product_name"])
+        if not product:
+            continue
+
+        # Get the product ID (1-indexed based on insertion order)
+        cursor.execute("SELECT id FROM products WHERE name = ?", (product["name"],))
+        product_row = cursor.fetchone()
+        if not product_row:
+            continue
+        product_id = product_row[0]
+
+        # Generate campaign name
+        campaign_name = _generate_campaign_name(product["name"], camp_data["store_name"])
+
+        # Insert campaign with product_id and store_name
+        # Use INSERT OR IGNORE for multi-process safety
+        cursor.execute('''
+            INSERT OR IGNORE INTO campaigns (name, description, product_id, store_name, city, state, category, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            campaign_name,
+            f"Campaign for {product['name']} at {camp_data['store_name']}",
+            product_id,
+            camp_data["store_name"],
+            camp_data["city"],
+            camp_data["state"],
+            camp_data["category"],
+            camp_data["status"]
         ))
         campaign_id = cursor.lastrowid
         campaigns_created += 1
 
-        # Insert images for this campaign
-        for image_data in campaign_data["images"]:
+        # Step 3: Create an activated video for active campaigns
+        if camp_data["status"] == "active":
+            variation = MOCK_VARIATIONS[i % len(MOCK_VARIATIONS)]
+            variation_name = f"{variation['model_ethnicity']}-{variation['setting']}-{variation['time_of_day']}"
+
+            # Generate video filename
+            date_str = datetime.now().strftime("%m%d%y")
+            video_filename = f"{product['name']}-{date_str}-{variation_name}.mp4"
+            thumbnail_path = f"{product['name']}-{date_str}-{variation_name}-thumbnail.png"
+
             cursor.execute('''
-                INSERT INTO campaign_images (campaign_id, image_path, image_type, metadata)
-                VALUES (?, ?, ?, ?)
+                INSERT OR IGNORE INTO campaign_videos
+                (campaign_id, product_id, video_filename, thumbnail_path,
+                 scene_prompt, video_prompt, pipeline_type,
+                 variation_name, variation_params, duration_seconds, aspect_ratio,
+                 status, activated_at, activated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 campaign_id,
-                image_data["filename"],
-                "seed",
-                json.dumps(image_data["metadata"])
+                product_id,
+                video_filename,
+                thumbnail_path,
+                f"Scene: {variation['model_ethnicity']} model wearing {product['name']} in {variation['setting']}",
+                f"Cinematic video of model in {product['name']}, {variation['mood']} mood, {variation['time_of_day']}",
+                "two-stage",
+                variation_name,
+                json.dumps(variation),
+                8,
+                "9:16",
+                "activated",  # Pre-activated for demo
+                datetime.now().isoformat(),
+                "mock_data"
             ))
-            image_id = cursor.lastrowid
-            images_created += 1
+            video_id = cursor.lastrowid
+            videos_created += 1
 
-            # Create a mock ad for active campaigns
-            if campaign_data["status"] == "active":
-                # Generate mock video properties based on image metadata
-                video_properties = generate_mock_video_properties(
-                    image_data["metadata"],
-                    campaign_data["name"]
-                )
-
+            # Step 4: Generate metrics for activated video
+            metrics = _generate_mock_video_metrics(video_id, campaign_id, days=30)
+            for metric in metrics:
                 cursor.execute('''
-                    INSERT INTO campaign_ads (campaign_id, image_id, video_path, prompt_used, status, video_properties)
+                    INSERT OR IGNORE INTO video_metrics
+                    (video_id, metric_date, impressions, dwell_time_seconds, circulation, revenue)
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
-                    campaign_id,
-                    image_id,
-                    f"generated/campaign_{campaign_id}_ad_{image_id}.mp4",
-                    f"Fashion video featuring {image_data['metadata'].get('clothing_description', 'elegant clothing')}",
-                    "completed",
-                    json.dumps(video_properties)
+                    metric["video_id"],
+                    metric["metric_date"],
+                    metric["impressions"],
+                    metric["dwell_time_seconds"],
+                    metric["circulation"],
+                    metric["revenue"]
                 ))
-                ad_id = cursor.lastrowid
-                ads_created += 1
-
-                # Generate metrics for this ad (in-store retail media metrics)
-                metrics = generate_mock_metrics(campaign_id, ad_id, days=90)
-                for metric in metrics:
-                    cursor.execute('''
-                        INSERT INTO campaign_metrics
-                        (campaign_id, ad_id, date, impressions, dwell_time, circulation, revenue)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        metric["campaign_id"],
-                        metric["ad_id"],
-                        metric["date"],
-                        metric["impressions"],
-                        metric["dwell_time"],
-                        metric["circulation"],
-                        metric["revenue"]
-                    ))
-                    metrics_created += 1
+                metrics_created += 1
 
     conn.commit()
     conn.close()
 
     return {
         "status": "success",
+        "products_created": products_created,
         "campaigns_created": campaigns_created,
-        "images_created": images_created,
-        "ads_created": ads_created,
+        "videos_created": videos_created,
         "metrics_created": metrics_created
     }
