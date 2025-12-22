@@ -177,13 +177,24 @@ Examples:
         print("Make sure you're running from the project root directory.")
         return 1
 
-    # Wrap in AdkApp
-    print("\nCreating AdkApp wrapper...")
-    app = agent_engines.AdkApp(
-        agent=root_agent,
-        enable_tracing=args.trace,
-    )
-    print_success("AdkApp created")
+    # Wrap in GlobalAdkApp (custom class that preserves GOOGLE_CLOUD_LOCATION)
+    # This allows Gemini 3 models to use the global endpoint even when
+    # Agent Engine is deployed to us-central1
+    print("\nCreating GlobalAdkApp wrapper (preserves global location for Gemini 3)...")
+    try:
+        from app.agent_engine_app import GlobalAdkApp
+        app = GlobalAdkApp(
+            agent=root_agent,
+            enable_tracing=args.trace,
+        )
+        print_success("GlobalAdkApp created (will restore GOOGLE_CLOUD_LOCATION=global after set_up)")
+    except ImportError:
+        print_warning("GlobalAdkApp not found, falling back to standard AdkApp")
+        app = agent_engines.AdkApp(
+            agent=root_agent,
+            enable_tracing=args.trace,
+        )
+        print_success("AdkApp created")
 
     # Deploy
     print_header("Deploying to Agent Engine")
@@ -203,12 +214,21 @@ Examples:
             "pydantic>=2.11.7",
         ]
 
+        # Environment variables for the deployed container
+        # GEMINI_MODEL_LOCATION is used by GlobalAdkApp to restore GOOGLE_CLOUD_LOCATION
+        # after Agent Engine's set_up() override
+        env_vars = {
+            "GEMINI_MODEL_LOCATION": "global",  # For Gemini 3 models
+            "GCS_BUCKET": args.bucket,
+        }
+
         # Use standard module-level agent_engines.create()
         # extra_packages bundles the local app/ directory so remote has access to app.tools, etc.
         remote_app = agent_engines.create(
             agent_engine=app,
             requirements=requirements,
             extra_packages=["./app"],  # Bundle local app package for remote access
+            env_vars=env_vars,  # Pass env vars including GEMINI_MODEL_LOCATION
             display_name=args.display_name,
             description="Fashion retail ad campaign management with Veo 3.1 video generation",
         )

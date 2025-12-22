@@ -191,16 +191,20 @@ After deployment, access:
 Deploy to Vertex AI Agent Engine for managed sessions and auto-scaling:
 
 ```bash
-make deploy-ae
+make deploy-ae-global  # Recommended for Gemini 3 models
 ```
 
 Query your agent programmatically:
 ```python
 from vertexai import agent_engines
+import vertexai
 
+vertexai.init(project="YOUR_PROJECT", location="us-central1")
 agent = agent_engines.get("YOUR_AGENT_ENGINE_ID")
 response = agent.query(input="List all campaigns")
 ```
+
+> **Note:** Gemini 3 models require `global` region, but Agent Engine only supports `us-central1`. We use a custom `GlobalAdkApp` class that restores `GOOGLE_CLOUD_LOCATION=global` after Agent Engine's setup. See [DEPLOYMENT.md](DEPLOYMENT.md#gemini-3--agent-engine-workaround) for details.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
@@ -240,14 +244,16 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
 This agent uses multiple Gemini models. Edit `app/config.py` to customize:
 
-| Purpose | Model | Notes |
-|---------|-------|-------|
-| **Agent Reasoning** | `gemini-3-flash-preview` | Main agent model |
-| **Scene Image Generation** | `gemini-3-pro-image-preview` | Creates scene with model wearing product |
-| **Video Animation** | `veo-3.1-generate-preview` | Animates scene into 8-second video |
-| **Charts & Maps** | `gemini-3-pro-image-preview` | AI-generated visualizations |
+| Purpose | Model | Region Required |
+|---------|-------|-----------------|
+| **Agent Reasoning** | `gemini-3-flash-preview` | `global` |
+| **Scene Image Generation** | `gemini-3-pro-image-preview` | `global` |
+| **Video Animation** | `veo-3.1-generate-preview` | `global` |
+| **Charts & Maps** | `gemini-3-pro-image-preview` | `global` |
 
-> **Note:** Veo 3.1 requires Vertex AI and takes 2-3 minutes per video generation.
+> **Important:** All Gemini 3 models require `global` region. For Agent Engine deployment, we use a custom `GlobalAdkApp` workaround that restores `GOOGLE_CLOUD_LOCATION=global` after Agent Engine's setup. See [github.com/google/adk-python/issues/3628](https://github.com/google/adk-python/issues/3628) for context.
+>
+> Veo 3.1 requires Vertex AI and takes 2-3 minutes per video generation.
 
 ---
 

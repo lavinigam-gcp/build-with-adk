@@ -146,14 +146,29 @@ Agent Engine is Google Cloud's managed service for production AI agents.
 - **Auto-Scaling**: No container management needed
 - **Query API**: Programmatic access
 
+### Gemini 3 + Agent Engine Workaround
+
+> **Important:** Gemini 3 models require `global` region, but Agent Engine only supports `us-central1`. We use a workaround via `GlobalAdkApp` that restores `GOOGLE_CLOUD_LOCATION=global` after Agent Engine's setup.
+>
+> See: [github.com/google/adk-python/issues/3628](https://github.com/google/adk-python/issues/3628)
+
+**How it works:**
+1. Agent Engine deploys to `us-central1` and overrides `GOOGLE_CLOUD_LOCATION`
+2. `GlobalAdkApp.set_up()` restores `GOOGLE_CLOUD_LOCATION=global` after parent setup
+3. Gemini 3 model calls use the global endpoint
+
+**Key files:**
+- `app/agent_engine_app.py` - Custom `GlobalAdkApp` class
+- `scripts/deploy_ae_inline.py` - Passes `GEMINI_MODEL_LOCATION=global` env var
+
 ### Deployment Options
 
-| Method | Region | Gemini 3 Support | Command |
-|--------|--------|------------------|---------|
-| **CLI** | `us-central1` | No | `make deploy-ae` |
-| **Python SDK (Global)** | `global` | **Yes** | `make deploy-ae-global` |
+| Method | Command | Gemini 3 Support |
+|--------|---------|------------------|
+| **Python SDK (Recommended)** | `make deploy-ae-global` | **Yes** (via GlobalAdkApp workaround) |
+| **CLI** | `make deploy-ae` | Yes (via GlobalAdkApp workaround) |
 
-> **Note:** Gemini 3 models (`gemini-3-flash-preview`, `gemini-3-pro-image-preview`) require the global region. Use `make deploy-ae-global` for these models.
+> **Note:** Both methods now support Gemini 3 models thanks to the `GlobalAdkApp` workaround.
 
 ### Quick Deploy (Global Region - Recommended)
 

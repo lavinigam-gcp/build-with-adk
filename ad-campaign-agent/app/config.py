@@ -18,11 +18,13 @@ import os
 
 # Model configuration
 # Agent models
-# NOTE: Using models available in us-central1 for Agent Engine compatibility
-MODEL = "gemini-2.5-pro"  # Main agent model #gemini-3-flash-preview #gemini-2.5-pro
+# NOTE: Gemini 3 models require global region. GlobalAdkApp preserves
+# GOOGLE_CLOUD_LOCATION=global after Agent Engine setup.
+# See: app/agent_engine_app.py and https://github.com/google/adk-python/issues/3628
+MODEL = "gemini-3-flash-preview"  # Main agent model (requires global region)
 
 # Media generation models
-IMAGE_GENERATION = "gemini-2.5-flash-image"  # For scene image generation (Stage 1) #gemini-3-pro-image-preview #gemini-2.5-flash-image
+IMAGE_GENERATION = "gemini-3-pro-image-preview"  # For scene image generation (Stage 1)
 VEO_MODEL = "veo-3.1-generate-preview"  # For video animation (Stage 2)
 
 # Video configuration
