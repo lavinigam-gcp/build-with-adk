@@ -514,13 +514,21 @@ def get_campaign_map_data(
 
                 video_list = []
                 for vid in videos:
-                    video_url = storage.get_video_public_url(vid["video_filename"]) if vid["video_filename"] else None
+                    # Check if video actually exists in storage
+                    video_url = None
+                    video_exists = False
+                    if vid["video_filename"]:
+                        video_url = storage.get_video_public_url(vid["video_filename"], check_exists=True)
+                        video_exists = video_url is not None
+                        if not video_exists:
+                            video_url = storage.get_video_public_url(vid["video_filename"], check_exists=False)
                     thumb_filename = vid["thumbnail_path"].split("/")[-1] if vid["thumbnail_path"] and "/" in vid["thumbnail_path"] else vid["thumbnail_path"]
                     thumbnail_url = storage.get_thumbnail_public_url(thumb_filename) if thumb_filename else None
 
                     video_list.append({
                         "id": vid["id"],
-                        "video_url": video_url,
+                        "video_url": video_url if video_exists else None,
+                        "video_exists": video_exists,
                         "thumbnail_url": thumbnail_url,
                         "variation": vid["variation_name"],
                         "status": vid["status"]

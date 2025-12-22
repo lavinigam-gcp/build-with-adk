@@ -242,10 +242,10 @@ This agent uses multiple Gemini models. Edit `app/config.py` to customize:
 
 | Purpose | Model | Notes |
 |---------|-------|-------|
-| **Agent Reasoning** | `gemini-2.5-pro` | Main agent model |
-| **Scene Image Generation** | `gemini-2.5-flash-image` | Creates scene with model wearing product |
+| **Agent Reasoning** | `gemini-3-flash-preview` | Main agent model |
+| **Scene Image Generation** | `gemini-3-pro-image-preview` | Creates scene with model wearing product |
 | **Video Animation** | `veo-3.1-generate-preview` | Animates scene into 8-second video |
-| **Charts & Maps** | `gemini-2.5-flash-image` | AI-generated visualizations |
+| **Charts & Maps** | `gemini-3-pro-image-preview` | AI-generated visualizations |
 
 > **Note:** Veo 3.1 requires Vertex AI and takes 2-3 minutes per video generation.
 

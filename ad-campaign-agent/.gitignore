@@ -17,7 +17,8 @@ generated/.adk/
 # Archive folder (backups, old scripts, local media)
 .archive/
 
-# Database backups (keep main db tracked)
+# Database files (ephemeral, recreated on startup)
+*.db
 *.db.bak
 
 # Documentation (internal plans)

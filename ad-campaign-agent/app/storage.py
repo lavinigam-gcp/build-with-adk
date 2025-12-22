@@ -316,19 +316,27 @@ def video_exists(path_or_filename: str) -> bool:
 
     Returns:
         True if the video exists, False otherwise.
+        Returns False on any error (permission denied, network issues, etc.)
     """
     from .config import GENERATED_DIR, GCS_BUCKET
     if get_storage_mode() == "gcs":
-        bucket = _get_bucket()
-        # Handle gs:// URLs, relative paths, and bare filenames
-        if path_or_filename.startswith("gs://"):
-            blob_path = path_or_filename.replace(f"gs://{GCS_BUCKET}/", "")
-        elif path_or_filename.startswith("generated/"):
-            blob_path = path_or_filename
-        else:
-            blob_path = f"generated/{path_or_filename}"
-        blob = bucket.blob(blob_path)
-        return blob.exists()
+        try:
+            bucket = _get_bucket()
+            if bucket is None:
+                return False
+            # Handle gs:// URLs, relative paths, and bare filenames
+            if path_or_filename.startswith("gs://"):
+                blob_path = path_or_filename.replace(f"gs://{GCS_BUCKET}/", "")
+            elif path_or_filename.startswith("generated/"):
+                blob_path = path_or_filename
+            else:
+                blob_path = f"generated/{path_or_filename}"
+            blob = bucket.blob(blob_path)
+            return blob.exists()
+        except Exception:
+            # Return False on any GCS error (permissions, network, etc.)
+            # This prevents cascading failures when GCS is inaccessible
+            return False
     else:
         # Local mode: handle various path formats
         if path_or_filename.startswith("generated/"):
@@ -362,15 +370,18 @@ def get_public_url(blob_path: str) -> Optional[str]:
     return f"https://storage.googleapis.com/{GCS_BUCKET}/{blob_path}"
 
 
-def get_video_public_url(filename: str) -> Optional[str]:
+def get_video_public_url(filename: str, check_exists: bool = False) -> Optional[str]:
     """Get public URL for a generated video.
 
     Args:
         filename: Video filename (without path prefix)
+        check_exists: If True, verify file exists before returning URL
 
     Returns:
-        Public URL string or None if not in GCS mode
+        Public URL string or None if not in GCS mode or file doesn't exist
     """
+    if check_exists and not video_exists(filename):
+        return None
     return get_public_url(f"generated/{filename}")
 
 

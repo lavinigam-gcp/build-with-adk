@@ -26,9 +26,9 @@ install-uv:
 ## Run agent locally with ADK web UI
 dev:
 	@if [ -d ".venv" ]; then \
-		.venv/bin/adk web app --port 8501; \
+		.venv/bin/adk web --port 8501; \
 	else \
-		adk web app --port 8501; \
+		adk web --port 8501; \
 	fi
 
 ## Alias for dev
@@ -36,7 +36,7 @@ playground: dev
 
 ## Run with pip-installed adk (no venv)
 dev-global:
-	adk web app --port 8501
+	adk web --port 8501
 
 # ============================================================================
 # DEPLOYMENT
@@ -160,11 +160,15 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@echo "Cleaned build artifacts"
 
-## Reset database to fresh state
+## Reset database to fresh demo state (4 campaigns, 22 products)
 reset-db:
-	@echo "Resetting database..."
+	@echo "Resetting database to fresh demo state..."
+	rm -f campaigns.db
 	rm -f app/campaigns.db
-	@echo "Database will be recreated on next run with demo data"
+	@echo "Database deleted. Next 'make dev' will create fresh demo data:"
+	@echo "  - 4 demo campaigns (LA, NYC, Chicago)"
+	@echo "  - 22 fashion products"
+	@echo "  - 1 activated video per campaign with 30 days of metrics"
 
 ## Show help
 help:

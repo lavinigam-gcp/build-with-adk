@@ -60,18 +60,86 @@ MOCK_CAMPAIGNS = [
         "status": "active",
     },
     {
-        "product_name": "emerald-satin-slip-dress",
+        # Changed from emerald-satin-slip-dress (no real videos) to sage-satin-camisole
+        "product_name": "sage-satin-camisole",
         "store_name": "The Grove",
         "city": "Los Angeles",
         "state": "CA",
-        "category": "formal",
+        "category": "essentials",  # 'casual' not in CHECK constraint; using 'essentials'
         "status": "active",
     },
 ]
 
-# Variation presets for mock videos
+# =============================================================================
+# REAL Videos in GCS (gs://kaggle-on-gcp-ad-campaign-assets/generated/)
+# =============================================================================
+# These are actual Veo-generated videos that exist in the bucket.
+# Each campaign gets multiple real videos with thumbnails.
+
+REAL_VIDEOS = {
+    "blue-floral-maxi-dress": [
+        {
+            "filename": "blue-floral-maxi-dress-122025-asian-beach-romantic.mp4",
+            "thumbnail": "blue-floral-maxi-dress-122025-asian-beach-romantic-thumbnail.png",
+            "variation": {"model_ethnicity": "asian", "setting": "beach", "mood": "romantic", "time_of_day": "day"},
+        },
+        {
+            "filename": "blue-floral-maxi-dress-122025-european-urban-bold.mp4",
+            "thumbnail": "blue-floral-maxi-dress-122025-european-urban-bold-thumbnail.png",
+            "variation": {"model_ethnicity": "european", "setting": "urban", "mood": "bold", "time_of_day": "day"},
+        },
+        {
+            "filename": "blue-floral-maxi-dress-122225-latina-beach-romantic.mp4",
+            "thumbnail": "blue-floral-maxi-dress-122225-latina-beach-romantic-thumbnail.png",
+            "variation": {"model_ethnicity": "latina", "setting": "beach", "mood": "romantic", "time_of_day": "day"},
+        },
+    ],
+    "elegant-black-cocktail-dress": [
+        {
+            "filename": "elegant-black-cocktail-dress-122225-diverse-rooftop-sophisticated.mp4",
+            "thumbnail": "elegant-black-cocktail-dress-122225-diverse-rooftop-sophisticated-thumbnail.png",
+            "variation": {"model_ethnicity": "diverse", "setting": "rooftop", "mood": "sophisticated", "time_of_day": "day"},
+        },
+    ],
+    "black-high-waist-trousers": [
+        {
+            "filename": "black-high-waist-trousers-122025-african-studio-sophisticated.mp4",
+            "thumbnail": "black-high-waist-trousers-122025-african-studio-sophisticated-thumbnail.png",
+            "variation": {"model_ethnicity": "african", "setting": "studio", "mood": "sophisticated", "time_of_day": "day"},
+        },
+        {
+            "filename": "black-high-waist-trousers-122025-asian-cafe-sophisticated.mp4",
+            "thumbnail": "black-high-waist-trousers-122025-asian-cafe-sophisticated-thumbnail.png",
+            "variation": {"model_ethnicity": "asian", "setting": "cafe", "mood": "sophisticated", "time_of_day": "day"},
+        },
+        {
+            "filename": "black-high-waist-trousers-122025-latina-rooftop-bold.mp4",
+            "thumbnail": "black-high-waist-trousers-122025-latina-rooftop-bold-thumbnail.png",
+            "variation": {"model_ethnicity": "latina", "setting": "rooftop", "mood": "bold", "time_of_day": "day"},
+        },
+    ],
+    "sage-satin-camisole": [
+        {
+            "filename": "sage-satin-camisole-122225-african-studio-bold.mp4",
+            "thumbnail": "sage-satin-camisole-122225-african-studio-bold-thumbnail.png",
+            "variation": {"model_ethnicity": "african", "setting": "studio", "mood": "bold", "time_of_day": "day"},
+        },
+        {
+            "filename": "sage-satin-camisole-122225-asian-cafe-sophisticated.mp4",
+            "thumbnail": "sage-satin-camisole-122225-asian-cafe-sophisticated-thumbnail.png",
+            "variation": {"model_ethnicity": "asian", "setting": "cafe", "mood": "sophisticated", "time_of_day": "day"},
+        },
+        {
+            "filename": "sage-satin-camisole-122225-european-urban-elegant.mp4",
+            "thumbnail": "sage-satin-camisole-122225-european-urban-elegant-thumbnail.png",
+            "variation": {"model_ethnicity": "european", "setting": "urban", "mood": "elegant", "time_of_day": "day"},
+        },
+    ],
+}
+
+# Legacy variation presets (for new video generation)
 MOCK_VARIATIONS = [
-    {"model_ethnicity": "asian", "setting": "beach", "mood": "elegant", "time_of_day": "golden-hour"},
+    {"model_ethnicity": "asian", "setting": "beach", "mood": "romantic", "time_of_day": "golden-hour"},
     {"model_ethnicity": "european", "setting": "urban", "mood": "sophisticated", "time_of_day": "day"},
     {"model_ethnicity": "african", "setting": "studio", "mood": "bold", "time_of_day": "day"},
     {"model_ethnicity": "latina", "setting": "rooftop", "mood": "romantic", "time_of_day": "sunset"},
@@ -248,61 +316,85 @@ def populate_mock_data() -> dict:
             camp_data["category"],
             camp_data["status"]
         ))
-        campaign_id = cursor.lastrowid
+
+        # Fetch the actual campaign_id (lastrowid is unreliable with INSERT OR IGNORE)
+        cursor.execute("SELECT id FROM campaigns WHERE name = ?", (campaign_name,))
+        campaign_row = cursor.fetchone()
+        if not campaign_row:
+            continue
+        campaign_id = campaign_row[0]
         campaigns_created += 1
 
-        # Step 3: Create an activated video for active campaigns
+        # Step 3: Create activated videos using REAL GCS video files
         if camp_data["status"] == "active":
-            variation = MOCK_VARIATIONS[i % len(MOCK_VARIATIONS)]
-            variation_name = f"{variation['model_ethnicity']}-{variation['setting']}-{variation['time_of_day']}"
+            product_name = product["name"]
+            real_video_list = REAL_VIDEOS.get(product_name, [])
 
-            # Generate video filename
-            date_str = datetime.now().strftime("%m%d%y")
-            video_filename = f"{product['name']}-{date_str}-{variation_name}.mp4"
-            thumbnail_path = f"{product['name']}-{date_str}-{variation_name}-thumbnail.png"
+            # If no real videos exist for this product, create one placeholder
+            if not real_video_list:
+                variation = MOCK_VARIATIONS[i % len(MOCK_VARIATIONS)]
+                variation_name = f"{variation['model_ethnicity']}-{variation['setting']}-{variation['time_of_day']}"
+                date_str = datetime.now().strftime("%m%d%y")
+                real_video_list = [{
+                    "filename": f"{product_name}-{date_str}-{variation_name}.mp4",
+                    "thumbnail": f"{product_name}-{date_str}-{variation_name}-thumbnail.png",
+                    "variation": variation,
+                }]
 
-            cursor.execute('''
-                INSERT OR IGNORE INTO campaign_videos
-                (campaign_id, product_id, video_filename, thumbnail_path,
-                 scene_prompt, video_prompt, pipeline_type,
-                 variation_name, variation_params, duration_seconds, aspect_ratio,
-                 status, activated_at, activated_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                campaign_id,
-                product_id,
-                video_filename,
-                thumbnail_path,
-                f"Scene: {variation['model_ethnicity']} model wearing {product['name']} in {variation['setting']}",
-                f"Cinematic video of model in {product['name']}, {variation['mood']} mood, {variation['time_of_day']}",
-                "two-stage",
-                variation_name,
-                json.dumps(variation),
-                8,
-                "9:16",
-                "activated",  # Pre-activated for demo
-                datetime.now().isoformat(),
-                "mock_data"
-            ))
-            video_id = cursor.lastrowid
-            videos_created += 1
+            # Insert ALL real videos for this campaign
+            for video_data in real_video_list:
+                variation = video_data["variation"]
+                variation_name = f"{variation['model_ethnicity']}-{variation['setting']}-{variation['mood']}"
 
-            # Step 4: Generate metrics for activated video
-            metrics = _generate_mock_video_metrics(video_id, campaign_id, days=30)
-            for metric in metrics:
                 cursor.execute('''
-                    INSERT OR IGNORE INTO video_metrics
-                    (video_id, metric_date, impressions, dwell_time_seconds, circulation, revenue)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO campaign_videos
+                    (campaign_id, product_id, video_filename, thumbnail_path,
+                     scene_prompt, video_prompt, pipeline_type,
+                     variation_name, variation_params, duration_seconds, aspect_ratio,
+                     status, activated_at, activated_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    metric["video_id"],
-                    metric["metric_date"],
-                    metric["impressions"],
-                    metric["dwell_time_seconds"],
-                    metric["circulation"],
-                    metric["revenue"]
+                    campaign_id,
+                    product_id,
+                    video_data["filename"],
+                    video_data["thumbnail"],
+                    f"Scene: {variation['model_ethnicity']} model wearing {product_name} in {variation['setting']}",
+                    f"Cinematic video of model in {product_name}, {variation['mood']} mood",
+                    "two-stage",
+                    variation_name,
+                    json.dumps(variation),
+                    8,
+                    "9:16",
+                    "activated",  # Pre-activated for demo
+                    datetime.now().isoformat(),
+                    "mock_data"
                 ))
-                metrics_created += 1
+
+                # Fetch the actual video_id (lastrowid is unreliable with INSERT OR IGNORE)
+                cursor.execute("SELECT id FROM campaign_videos WHERE video_filename = ?",
+                              (video_data["filename"],))
+                video_row = cursor.fetchone()
+                if not video_row:
+                    continue
+                video_id = video_row[0]
+                videos_created += 1
+
+                # Step 4: Generate metrics for each activated video
+                metrics = _generate_mock_video_metrics(video_id, campaign_id, days=30)
+                for metric in metrics:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO video_metrics
+                        (video_id, metric_date, impressions, dwell_time_seconds, circulation, revenue)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        metric["video_id"],
+                        metric["metric_date"],
+                        metric["impressions"],
+                        metric["dwell_time_seconds"],
+                        metric["circulation"],
+                        metric["revenue"]
+                    ))
+                    metrics_created += 1
 
     conn.commit()
     conn.close()

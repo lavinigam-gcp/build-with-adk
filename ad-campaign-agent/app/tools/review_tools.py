@@ -644,8 +644,15 @@ def get_video_review_table(
         status_counts = {"generated": 0, "activated": 0, "paused": 0, "archived": 0}
 
         for row in rows:
-            # Get public URLs for viewing
-            video_url = storage.get_video_public_url(row["video_filename"]) if row["video_filename"] else None
+            # Get public URLs for viewing - check if video actually exists in GCS
+            video_url = None
+            video_exists_in_storage = False
+            if row["video_filename"]:
+                video_url = storage.get_video_public_url(row["video_filename"], check_exists=True)
+                video_exists_in_storage = video_url is not None
+                # If file doesn't exist, still provide URL for reference but mark it
+                if not video_exists_in_storage:
+                    video_url = storage.get_video_public_url(row["video_filename"], check_exists=False)
             # Product image URL (not thumbnail)
             product_image_url = storage.get_public_url(f"product-images/{row['product_image']}") if row["product_image"] else None
 
@@ -689,6 +696,7 @@ def get_video_review_table(
                 "variation_name": row["variation_name"],
                 "variation_params": variation_params,
                 "video_url": video_url,
+                "video_exists": video_exists_in_storage,  # True if file exists in GCS
                 "duration_seconds": row["duration_seconds"],
                 "pipeline_type": row["pipeline_type"],
                 "generation_time_seconds": row["generation_time_seconds"],
@@ -734,9 +742,12 @@ def get_video_review_table(
             table_lines.append(f"- Created: {v['created_at'] or 'N/A'}")
             table_lines.append("")
 
-            # Watch link - prominent
+            # Watch link - prominent, with existence indicator
             if v["video_url"]:
-                table_lines.append(f"**👉 [▶️ WATCH VIDEO]({v['video_url']})**")
+                if v.get("video_exists", True):
+                    table_lines.append(f"**👉 [▶️ WATCH VIDEO]({v['video_url']})**")
+                else:
+                    table_lines.append("**⚠️ Video not yet generated** (demo placeholder - generate a real video to view)")
                 table_lines.append("")
 
             table_lines.append("---")
@@ -805,8 +816,16 @@ def get_video_details(video_id: int) -> dict:
                 "message": f"Video {video_id} not found"
             }
 
-        # Get public URLs
-        video_url = storage.get_video_public_url(row["video_filename"]) if row["video_filename"] else None
+        # Get public URLs - check if video actually exists in GCS
+        video_url = None
+        video_exists_in_storage = False
+        if row["video_filename"]:
+            video_url = storage.get_video_public_url(row["video_filename"], check_exists=True)
+            video_exists_in_storage = video_url is not None
+            # If file doesn't exist, still provide URL for reference
+            if not video_exists_in_storage:
+                video_url = storage.get_video_public_url(row["video_filename"], check_exists=False)
+
         thumbnail_url = None
         if row["thumbnail_path"]:
             # Handle both full paths and filenames
@@ -843,12 +862,19 @@ def get_video_details(video_id: int) -> dict:
                     "rpi": round(m["total_revenue"] / m["total_impressions"], 4) if m["total_impressions"] > 0 else 0
                 }
 
+        # Build view action based on whether video exists
+        if video_exists_in_storage:
+            view_action = f"Click video_url to preview: {video_url}"
+        else:
+            view_action = "Video file not yet generated (demo placeholder). Generate a real video using generate_video_from_product()."
+
         return {
             "status": "success",
             "video": {
                 "id": row["id"],
                 "video_filename": row["video_filename"],
-                "video_url": video_url,
+                "video_url": video_url if video_exists_in_storage else None,
+                "video_exists": video_exists_in_storage,
                 "thumbnail_url": thumbnail_url,
                 "video_status": row["status"],
                 "duration_seconds": row["duration_seconds"],
@@ -883,9 +909,10 @@ def get_video_details(video_id: int) -> dict:
             },
             "metrics": metrics_summary,
             "actions": {
-                "view": f"Click video_url to preview: {video_url}",
+                "view": view_action,
                 "activate": f"activate_video({video_id})" if row["status"] == "generated" else None,
                 "pause": f"pause_video({video_id})" if row["status"] == "activated" else None,
                 "archive": f"archive_video({video_id})" if row["status"] != "archived" else None
-            }
+            },
+            "note": None if video_exists_in_storage else "This is a demo placeholder. The video file does not exist in storage. Use generate_video_from_product() to create a real video."
         }
