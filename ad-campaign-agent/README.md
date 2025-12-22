@@ -324,8 +324,52 @@ ad-campaign-agent/
 │   ├── deploy_ae.sh         # Agent Engine deployment
 │   └── setup_gcp.sh         # GCP resource setup
 │
+├── tests/                   # Test suite
+│   ├── conftest.py          # Shared fixtures
+│   ├── unit/                # Tool unit tests
+│   ├── integration/         # Agent integration tests
+│   └── e2e/                 # End-to-end workflow tests
+│
 └── assets/                  # Architecture diagrams
 ```
+
+---
+
+## Testing
+
+Comprehensive test suite covering all 42 tools and demo workflows.
+
+### Quick Start
+
+```bash
+# Run all fast tests (~5 seconds)
+make test
+
+# Run with coverage report
+make test-coverage
+```
+
+### Test Commands
+
+| Command | Description | Duration |
+|---------|-------------|----------|
+| `make test` | Unit + E2E tests | ~5 sec |
+| `make test-unit` | Tool unit tests only | ~4 sec |
+| `make test-e2e` | Demo workflow tests | ~1 sec |
+| `make test-integration` | LLM agent tests | ~2-5 min |
+| `make test-all` | All tests (including Veo) | ~10+ min |
+
+### Test Architecture
+
+| Level | Tests | Purpose |
+|-------|-------|---------|
+| **Unit** | 80 tests | Individual tool functions |
+| **E2E** | 23 tests | Demo workflow scenarios |
+| **Integration** | 5 EvalSets | Agent routing with real LLM |
+
+Tests use a **copy** of the main database to protect production data while testing with real demo content.
+
+See [tests/README.md](tests/README.md) for complete testing documentation.
 
 ---
 
@@ -349,6 +393,7 @@ For a complete 20-minute demo walkthrough covering all agents and features, see 
 | Goal | Resource |
 |------|----------|
 | **Run a demo** | [DEMO_GUIDE.md](DEMO_GUIDE.md) - Complete walkthrough |
+| **Run tests** | [tests/README.md](tests/README.md) - Testing framework |
 | **Deploy to production** | [DEPLOYMENT.md](DEPLOYMENT.md) - Cloud Run & Agent Engine |
 | **Learn ADK fundamentals** | [ADK Documentation](https://google.github.io/adk-docs/) |
 | **Production CI/CD** | [Agent Starter Pack](https://googlecloudplatform.github.io/agent-starter-pack/) |

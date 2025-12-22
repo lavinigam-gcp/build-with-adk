@@ -1,0 +1,100 @@
+{
+  "eval_set_id": "coordinator-agent-tests",
+  "name": "Coordinator Agent Routing Tests",
+  "description": "Tests that the coordinator routes queries to the correct sub-agents",
+  "eval_cases": [
+    {
+      "eval_id": "route-to-campaign-agent-list",
+      "conversation": [
+        {
+          "invocation_id": "test-001",
+          "user_content": {
+            "parts": [{"text": "List all campaigns"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "list_campaigns", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "route-to-media-agent-products",
+      "conversation": [
+        {
+          "invocation_id": "test-002",
+          "user_content": {
+            "parts": [{"text": "Show me all available products"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "list_products", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "route-to-review-agent-table",
+      "conversation": [
+        {
+          "invocation_id": "test-003",
+          "user_content": {
+            "parts": [{"text": "Show me the video review table"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_video_review_table", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "route-to-analytics-agent-metrics",
+      "conversation": [
+        {
+          "invocation_id": "test-004",
+          "user_content": {
+            "parts": [{"text": "Get metrics for campaign 1"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_campaign_metrics", "args": {"campaign_id": 1}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    }
+  ],
+  "creation_timestamp": 1735000000.0
+}

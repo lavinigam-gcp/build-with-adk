@@ -30,3 +30,19 @@ Pillow>=10.2.0
 
 # Data validation
 pydantic>=2.11.7
+
+# =============================================================================
+# Testing Dependencies
+# =============================================================================
+
+# Test framework
+pytest>=8.0.0
+
+# Async test support
+pytest-asyncio>=0.23.0
+
+# Coverage reporting
+pytest-cov>=4.1.0
+
+# Mock utilities
+pytest-mock>=3.12.0

@@ -1,7 +1,7 @@
 # Makefile for Ad Campaign Agent
 # Compatible with agent-starter-pack deployment
 
-.PHONY: install dev playground deploy deploy-ae clean help
+.PHONY: install dev playground deploy deploy-ae clean help test test-unit test-integration test-e2e test-all test-coverage
 
 # ============================================================================
 # LOCAL DEVELOPMENT
@@ -94,6 +94,62 @@ auth:
 	gcloud auth application-default login
 
 # ============================================================================
+# TESTING
+# ============================================================================
+
+## Run all tests (unit + integration, skip slow)
+test: test-unit test-integration
+	@echo ""
+	@echo "All tests passed!"
+
+## Run unit tests only (fast, no LLM calls)
+test-unit:
+	@echo "Running unit tests..."
+	@if [ -d ".venv" ]; then \
+		.venv/bin/pytest tests/unit -v --tb=short; \
+	else \
+		pytest tests/unit -v --tb=short; \
+	fi
+
+## Run integration tests (with LLM, skip slow)
+test-integration:
+	@echo "Running integration tests..."
+	@if [ -d ".venv" ]; then \
+		.venv/bin/pytest tests/integration -v --tb=short -m "not slow"; \
+	else \
+		pytest tests/integration -v --tb=short -m "not slow"; \
+	fi
+
+## Run end-to-end workflow tests
+test-e2e:
+	@echo "Running end-to-end tests..."
+	@if [ -d ".venv" ]; then \
+		.venv/bin/pytest tests/e2e -v --tb=short; \
+	else \
+		pytest tests/e2e -v --tb=short; \
+	fi
+
+## Run all tests including slow (Veo) tests
+test-all:
+	@echo "Running ALL tests including slow Veo tests..."
+	@if [ -d ".venv" ]; then \
+		.venv/bin/pytest tests/ -v --tb=short; \
+	else \
+		pytest tests/ -v --tb=short; \
+	fi
+
+## Run tests with coverage report
+test-coverage:
+	@echo "Running tests with coverage..."
+	@if [ -d ".venv" ]; then \
+		.venv/bin/pytest tests/ --cov=app --cov-report=html --cov-report=term-missing; \
+	else \
+		pytest tests/ --cov=app --cov-report=html --cov-report=term-missing; \
+	fi
+	@echo ""
+	@echo "Coverage report generated: htmlcov/index.html"
+
+# ============================================================================
 # UTILITIES
 # ============================================================================
 
@@ -133,6 +189,14 @@ help:
 	@echo "GCP SETUP:"
 	@echo "  make setup-gcp   - Setup GCP resources (bucket, APIs)"
 	@echo "  make auth        - Authenticate with Google Cloud"
+	@echo ""
+	@echo "TESTING:"
+	@echo "  make test           - Run unit + integration tests (default)"
+	@echo "  make test-unit      - Run unit tests only (fast, no LLM)"
+	@echo "  make test-integration - Run integration tests (with LLM)"
+	@echo "  make test-e2e       - Run end-to-end workflow tests"
+	@echo "  make test-all       - Run ALL tests including slow Veo tests"
+	@echo "  make test-coverage  - Run tests with coverage report"
 	@echo ""
 	@echo "UTILITIES:"
 	@echo "  make clean       - Clean build artifacts"

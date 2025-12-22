@@ -1,0 +1,77 @@
+{
+  "eval_set_id": "campaign-agent-tests",
+  "name": "Campaign Agent Tool Tests",
+  "description": "Tests for campaign CRUD and location features",
+  "eval_cases": [
+    {
+      "eval_id": "list-all-campaigns",
+      "conversation": [
+        {
+          "invocation_id": "test-c01",
+          "user_content": {
+            "parts": [{"text": "What campaigns do we have?"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "list_campaigns", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "get-campaign-details",
+      "conversation": [
+        {
+          "invocation_id": "test-c02",
+          "user_content": {
+            "parts": [{"text": "Show me the details of campaign 2"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_campaign", "args": {"campaign_id": 2}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "get-campaign-locations",
+      "conversation": [
+        {
+          "invocation_id": "test-c03",
+          "user_content": {
+            "parts": [{"text": "Show me all store locations"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_campaign_locations", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    }
+  ],
+  "creation_timestamp": 1735000000.0
+}

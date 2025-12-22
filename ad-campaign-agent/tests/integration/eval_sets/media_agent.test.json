@@ -1,0 +1,100 @@
+{
+  "eval_set_id": "media-agent-tests",
+  "name": "Media Agent Tool Tests",
+  "description": "Tests for product browsing and video generation",
+  "eval_cases": [
+    {
+      "eval_id": "list-all-products",
+      "conversation": [
+        {
+          "invocation_id": "test-m01",
+          "user_content": {
+            "parts": [{"text": "Show me all available products with their image links"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "list_products", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "list-products-by-category",
+      "conversation": [
+        {
+          "invocation_id": "test-m02",
+          "user_content": {
+            "parts": [{"text": "List all dress products"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "list_products", "args": {"category": "dress"}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "get-variation-presets",
+      "conversation": [
+        {
+          "invocation_id": "test-m03",
+          "user_content": {
+            "parts": [{"text": "What variation presets are available for video generation?"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_variation_presets", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "list-campaign-videos",
+      "conversation": [
+        {
+          "invocation_id": "test-m04",
+          "user_content": {
+            "parts": [{"text": "List all videos for campaign 1"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "list_campaign_videos", "args": {"campaign_id": 1}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    }
+  ],
+  "creation_timestamp": 1735000000.0
+}

@@ -1,0 +1,100 @@
+{
+  "eval_set_id": "analytics-agent-tests",
+  "name": "Analytics Agent Tool Tests",
+  "description": "Tests for metrics, insights, and visualization tools",
+  "eval_cases": [
+    {
+      "eval_id": "get-campaign-metrics",
+      "conversation": [
+        {
+          "invocation_id": "test-a01",
+          "user_content": {
+            "parts": [{"text": "Get metrics for campaign 2 over the last 30 days"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_campaign_metrics", "args": {"campaign_id": 2}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "get-top-performers",
+      "conversation": [
+        {
+          "invocation_id": "test-a02",
+          "user_content": {
+            "parts": [{"text": "Show me the top 5 performing videos by RPI"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_top_performing_ads", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "compare-campaigns",
+      "conversation": [
+        {
+          "invocation_id": "test-a03",
+          "user_content": {
+            "parts": [{"text": "Compare campaigns 1, 2, 3, and 4"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "compare_campaigns", "args": {"campaign_ids": [1, 2, 3, 4]}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "get-map-data",
+      "conversation": [
+        {
+          "invocation_id": "test-a04",
+          "user_content": {
+            "parts": [{"text": "Show me all campaign locations with Google Maps links"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_campaign_map_data", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    }
+  ],
+  "creation_timestamp": 1735000000.0
+}

@@ -1,0 +1,77 @@
+{
+  "eval_set_id": "review-agent-tests",
+  "name": "Review Agent Tool Tests",
+  "description": "Tests for HITL video review and activation workflow",
+  "eval_cases": [
+    {
+      "eval_id": "show-review-table",
+      "conversation": [
+        {
+          "invocation_id": "test-r01",
+          "user_content": {
+            "parts": [{"text": "Show me the video review table with public links"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_video_review_table", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "get-activation-summary",
+      "conversation": [
+        {
+          "invocation_id": "test-r02",
+          "user_content": {
+            "parts": [{"text": "What's the activation summary?"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "get_activation_summary", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    },
+    {
+      "eval_id": "list-pending-videos",
+      "conversation": [
+        {
+          "invocation_id": "test-r03",
+          "user_content": {
+            "parts": [{"text": "Show me all pending videos"}],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{"text": ""}],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "list_pending_videos", "args": {}}
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": null
+    }
+  ],
+  "creation_timestamp": 1735000000.0
+}
