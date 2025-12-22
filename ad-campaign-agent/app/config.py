@@ -19,10 +19,10 @@ import os
 # Model configuration
 # Agent models
 # NOTE: Using models available in us-central1 for Agent Engine compatibility
-MODEL = "gemini-2.5-pro"  # Main agent model
+MODEL = "gemini-2.5-pro"  # Main agent model #gemini-3-flash-preview #gemini-2.5-pro
 
 # Media generation models
-IMAGE_GENERATION = "gemini-2.5-flash-image"  # For scene image generation (Stage 1)
+IMAGE_GENERATION = "gemini-3-pro-image-preview"  # For scene image generation (Stage 1) #gemini-3-pro-image-preview #gemini-2.5-flash-image
 VEO_MODEL = "veo-3.1-generate-preview"  # For video animation (Stage 2)
 
 # Video configuration

@@ -423,7 +423,7 @@ STAGE 2 - Video Generation Prompt:
 async def generate_video_from_product(
     campaign_id: int,
     product_id: int,
-    variation: Optional[CreativeVariation] = None,
+    variation: Optional[dict] = None,
     use_two_stage: bool = True,
     duration_seconds: int = 8,
     tool_context: ToolContext = None
@@ -440,7 +440,18 @@ async def generate_video_from_product(
     Args:
         campaign_id: The campaign to generate for
         product_id: The product ID from products table
-        variation: CreativeVariation parameters (defaults to elegant studio)
+        variation: Optional dict with variation parameters. Supported keys:
+            - name: Unique variation identifier
+            - model_ethnicity: asian, european, african, latina, south-asian, diverse
+            - setting: studio, beach, urban, cafe, rooftop, garden, nature, etc.
+            - mood: elegant, romantic, bold, playful, sophisticated, etc.
+            - lighting: natural, studio, dramatic, soft, golden, neon, moody
+            - activity: walking, standing, sitting, dancing, spinning, posing
+            - camera_movement: orbit, pan, dolly, static, tracking, crane
+            - time_of_day: golden-hour, sunrise, day, sunset, dusk, night
+            - visual_style: cinematic, editorial, commercial, artistic
+            - energy: calm, moderate, dynamic, high-energy
+            If None, uses elegant studio defaults.
         use_two_stage: Use two-stage pipeline (default True)
         duration_seconds: Video duration (4, 6, or 8 seconds)
         tool_context: Optional ADK ToolContext for artifact storage
@@ -469,11 +480,27 @@ async def generate_video_from_product(
     print(f"[DEBUG generate_video_from_product] Product: {product['name']}")
     print(f"[DEBUG generate_video_from_product] Campaign: {campaign['name']}")
 
-    # Use default variation if none provided
+    # Convert dict to CreativeVariation or use default
+    # ADK 1.21+ requires dict instead of Pydantic model in function signature
     if variation is None:
-        variation = get_default_variation()
+        variation_obj = get_default_variation()
+    elif isinstance(variation, dict):
+        try:
+            variation_obj = CreativeVariation.model_validate(variation)
+        except Exception as e:
+            print(f"[DEBUG generate_video_from_product] Variation validation error: {e}")
+            # Fall back to default with any valid fields from dict
+            variation_obj = get_default_variation()
+            for key, value in variation.items():
+                if hasattr(variation_obj, key):
+                    setattr(variation_obj, key, value)
+    elif isinstance(variation, CreativeVariation):
+        # Already a CreativeVariation object (internal calls)
+        variation_obj = variation
+    else:
+        variation_obj = get_default_variation()
 
-    print(f"[DEBUG generate_video_from_product] Variation: {variation.name}")
+    print(f"[DEBUG generate_video_from_product] Variation: {variation_obj.name}")
 
     # Check if product is linked to campaign
     with get_db_cursor() as cursor:
@@ -504,7 +531,7 @@ async def generate_video_from_product(
             print(f"[DEBUG generate_video_from_product] Could not load product image: {e}")
 
     # Generate video filename
-    video_filename = generate_video_filename(product['name'], variation.name)
+    video_filename = generate_video_filename(product['name'], variation_obj.name)
     thumbnail_filename = video_filename.replace('.mp4', '-thumbnail.png')
 
     try:
@@ -515,7 +542,7 @@ async def generate_video_from_product(
             print(f"[DEBUG generate_video_from_product] Stage 1: Generating scene image...")
             scene_image_bytes, scene_prompt = await generate_scene_image(
                 product=product,
-                variation=variation,
+                variation=variation_obj,
                 product_image_bytes=product_image_bytes
             )
 
@@ -533,14 +560,14 @@ async def generate_video_from_product(
             video_bytes, video_prompt = await animate_scene_with_veo(
                 scene_image_bytes=scene_image_bytes,
                 product=product,
-                variation=variation,
+                variation=variation_obj,
                 duration_seconds=duration_seconds
             )
         else:
             # Single-stage: Direct video generation (fallback)
             print(f"[DEBUG generate_video_from_product] Single-stage video generation...")
             scene_prompt = ""
-            video_prompt = build_creative_prompt(product, variation)
+            video_prompt = build_creative_prompt(product, variation_obj)
 
             # Load product image for direct Veo generation
             if not product_image_bytes:
@@ -607,7 +634,7 @@ async def generate_video_from_product(
         save_video_metadata(
             video_filename=video_filename,
             product=product,
-            variation=variation,
+            variation=variation_obj,
             scene_prompt=scene_prompt,
             video_prompt=video_prompt,
             pipeline_type="two-stage" if use_two_stage else "single-stage"
@@ -637,8 +664,8 @@ async def generate_video_from_product(
                 scene_prompt,
                 video_prompt,
                 "two-stage" if use_two_stage else "single-stage",
-                variation.name,
-                json.dumps(variation.to_dict()),
+                variation_obj.name,
+                json.dumps(variation_obj.to_dict()),
                 duration_seconds,
                 "9:16",
                 generation_time
@@ -657,7 +684,7 @@ async def generate_video_from_product(
                 "video_filename": video_filename,
                 "video_path": video_path,
                 "thumbnail_path": thumbnail_path,
-                "variation": variation.name,
+                "variation": variation_obj.name,
                 "pipeline": "two-stage" if use_two_stage else "single-stage",
                 "duration_seconds": duration_seconds,
                 "generation_time_seconds": generation_time,
@@ -679,7 +706,7 @@ async def generate_video_from_product(
             "status": "error",
             "message": f"Video generation failed: {str(e)}",
             "product": product["name"],
-            "variation": variation.name
+            "variation": variation_obj.name if variation_obj else "default"
         }
 
 

@@ -207,10 +207,11 @@ All videos now use a two-stage pipeline:
 - Cinematic camera movements and transitions
 - Saved with descriptive filename: [product-name]-[MMDDYY]-[variation-name].mp4
 
-Use generate_video_from_product(campaign_id, product_id, variation) for primary workflow.
+Use generate_video_from_product(campaign_id, product_id) for default generation.
+Pass an optional variation dict: generate_video_from_product(campaign_id, product_id, {"setting": "beach", "mood": "romantic"})
 
 ## Creative Variations (NEW)
-Videos can be customized with variation parameters:
+Videos can be customized with variation parameters (as dict):
 - **model_ethnicity**: asian, european, african, latina, south-asian, diverse
 - **setting**: studio, beach, urban, cafe, rooftop, garden, nature, etc.
 - **mood**: elegant, romantic, bold, playful, sophisticated, energetic, serene
@@ -526,7 +527,7 @@ User: "I want to promote the black trousers at the Chicago store"
 
 1. **Browse products** (Media Agent): list_products(category="pants")
 2. **Create campaign** (Campaign Agent): create_campaign(product_id=1, store_name="Water Tower Place", city="Chicago", state="Illinois")
-3. **Generate video** (Media Agent): generate_video_from_product(campaign_id=X, product_id=1) with variations
+3. **Generate video** (Media Agent): generate_video_from_product(campaign_id=X, product_id=1) or with variation dict
 4. **Activate** (Review Agent): activate_video(video_id=Y)
 5. **View metrics** (Analytics Agent): get_campaign_metrics(campaign_id=X)
 
