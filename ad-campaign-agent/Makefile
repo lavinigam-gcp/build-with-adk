@@ -1,7 +1,7 @@
 # Makefile for Ad Campaign Agent
 # Compatible with agent-starter-pack deployment
 
-.PHONY: install dev playground deploy deploy-ae deploy-ae-global clean help test test-unit test-integration test-e2e test-all test-coverage
+.PHONY: install dev playground deploy deploy-ae deploy-ae-global clean help test test-unit test-integration test-e2e test-all test-coverage setup-ae-permissions
 
 # ============================================================================
 # LOCAL DEVELOPMENT
@@ -111,6 +111,22 @@ auth:
 	gcloud auth login
 	gcloud auth application-default login
 
+## Grant GCS permissions to Agent Engine service account
+## Required for Agent Engine to write generated videos to GCS
+setup-ae-permissions:
+	@echo "Granting GCS permissions to Reasoning Engine Service Agent..."
+	@PROJECT_ID=$${GOOGLE_CLOUD_PROJECT:-$$(gcloud config get-value project)}; \
+	PROJECT_NUMBER=$$(gcloud projects describe $$PROJECT_ID --format='value(projectNumber)'); \
+	SERVICE_ACCOUNT="service-$$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com"; \
+	echo "Project: $$PROJECT_ID"; \
+	echo "Service Account: $$SERVICE_ACCOUNT"; \
+	gcloud projects add-iam-policy-binding $$PROJECT_ID \
+		--member="serviceAccount:$$SERVICE_ACCOUNT" \
+		--role="roles/storage.objectAdmin" \
+		--condition=None \
+		--quiet && \
+	echo "✓ Granted storage.objectAdmin to $$SERVICE_ACCOUNT"
+
 # ============================================================================
 # TESTING
 # ============================================================================
@@ -212,8 +228,9 @@ help:
 	@echo "  make starter-pack   - Create production project with CI/CD"
 	@echo ""
 	@echo "GCP SETUP:"
-	@echo "  make setup-gcp   - Setup GCP resources (bucket, APIs)"
-	@echo "  make auth        - Authenticate with Google Cloud"
+	@echo "  make setup-gcp           - Setup GCP resources (bucket, APIs)"
+	@echo "  make auth                - Authenticate with Google Cloud"
+	@echo "  make setup-ae-permissions - Grant GCS write access to Agent Engine"
 	@echo ""
 	@echo "TESTING:"
 	@echo "  make test           - Run unit + integration tests (default)"

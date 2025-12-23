@@ -329,6 +329,7 @@ async def animate_scene_with_veo(
     generated_video = operation.result.generated_videos[0]
 
     is_vertex_ai = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true"
+    print(f"[DEBUG animate_scene_with_veo] GOOGLE_GENAI_USE_VERTEXAI={os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'NOT SET')}, is_vertex_ai={is_vertex_ai}")
 
     if is_vertex_ai:
         video_bytes = generated_video.video.video_bytes

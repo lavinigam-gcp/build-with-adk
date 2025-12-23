@@ -36,6 +36,7 @@ See: https://google.github.io/adk-docs/deploy/agent-engine/
 
 import argparse
 import os
+import subprocess
 import sys
 
 # Check Python version - Agent Engine only supports 3.9-3.13
@@ -87,6 +88,84 @@ def print_warning(text: str):
     print(f"{YELLOW}⚠ {text}{NC}")
 
 
+def print_error(text: str):
+    """Print error message."""
+    print(f"{RED}✗ {text}{NC}")
+
+
+def get_project_number(project_id: str) -> str:
+    """Get the project number from project ID."""
+    try:
+        result = subprocess.run(
+            ["gcloud", "projects", "describe", project_id, "--format=value(projectNumber)"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print_warning(f"Could not get project number: {e}")
+        return None
+
+
+def grant_gcs_permissions(project_id: str, bucket_name: str) -> bool:
+    """Grant GCS permissions to the Reasoning Engine Service Agent.
+
+    Agent Engine uses a dedicated service account that needs storage.objectAdmin
+    to write generated videos and thumbnails to GCS.
+
+    Service account format: service-{PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com
+
+    Args:
+        project_id: GCP project ID
+        bucket_name: GCS bucket name (without gs:// prefix)
+
+    Returns:
+        True if permissions were granted successfully
+    """
+    print_header("Granting GCS Permissions")
+
+    project_number = get_project_number(project_id)
+    if not project_number:
+        print_warning("Skipping GCS permission setup (could not get project number)")
+        print_warning("You may need to manually grant storage.objectAdmin to the Reasoning Engine service account")
+        return False
+
+    service_account = f"service-{project_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+    print_info(f"Service Account: {service_account}")
+    print_info(f"Bucket: gs://{bucket_name}")
+
+    # Grant storage.objectAdmin at project level for simplicity
+    # This allows the agent to write to any bucket in the project
+    try:
+        print(f"\nGranting storage.objectAdmin to Reasoning Engine service account...")
+        result = subprocess.run(
+            [
+                "gcloud", "projects", "add-iam-policy-binding", project_id,
+                f"--member=serviceAccount:{service_account}",
+                "--role=roles/storage.objectAdmin",
+                "--condition=None",
+                "--quiet"
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print_success(f"Granted storage.objectAdmin to {service_account}")
+        return True
+    except subprocess.CalledProcessError as e:
+        # Check if it's just a "binding already exists" situation
+        if "already exists" in e.stderr.lower() or e.returncode == 0:
+            print_success("Permission already granted (no change needed)")
+            return True
+        print_warning(f"Could not grant GCS permissions: {e.stderr}")
+        print_warning("You may need to manually run:")
+        print_warning(f"  gcloud projects add-iam-policy-binding {project_id} \\")
+        print_warning(f"    --member=serviceAccount:{service_account} \\")
+        print_warning(f"    --role=roles/storage.objectAdmin")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Deploy Ad Campaign Agent to Agent Engine using Python SDK",
@@ -127,6 +206,11 @@ Examples:
         "--display-name",
         default="Ad Campaign Agent",
         help="Display name in Agent Engine console"
+    )
+    parser.add_argument(
+        "--skip-permissions",
+        action="store_true",
+        help="Skip granting GCS permissions to Reasoning Engine service account"
     )
     args = parser.parse_args()
 
@@ -218,6 +302,7 @@ Examples:
         # GEMINI_MODEL_LOCATION is used by GlobalAdkApp to restore GOOGLE_CLOUD_LOCATION
         # after Agent Engine's set_up() override
         env_vars = {
+            "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",  # Use Vertex AI (not AI Studio)
             "GEMINI_MODEL_LOCATION": "global",  # For Gemini 3 models
             "GCS_BUCKET": args.bucket,
         }
@@ -240,6 +325,14 @@ Examples:
 
     print()
     print_success(f"Resource Name: {remote_app.resource_name}")
+
+    # Grant GCS permissions to the Reasoning Engine service account
+    # This is required for the agent to write generated videos to GCS
+    if not args.skip_permissions:
+        grant_gcs_permissions(args.project, args.bucket)
+    else:
+        print_warning("Skipping GCS permission setup (--skip-permissions flag)")
+        print_warning("Make sure the Reasoning Engine service account has storage.objectAdmin role")
     print()
     print(f"{GREEN}Query API Endpoint:{NC}")
     print(f"  https://{args.region}-aiplatform.googleapis.com/v1/{remote_app.resource_name}:query")

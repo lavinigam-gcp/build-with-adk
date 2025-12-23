@@ -73,6 +73,22 @@ gcloud storage cp path/to/images/* gs://YOUR_BUCKET_NAME/product-images/
 gcloud storage ls gs://YOUR_BUCKET_NAME/product-images/
 ```
 
+### 4. Grant GCS Permissions for Agent Engine (Required)
+
+Agent Engine uses a dedicated service account that needs write access to GCS for storing generated videos and thumbnails.
+
+```bash
+# Get your project number
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
+
+# Grant storage.objectAdmin to the Reasoning Engine Service Agent
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+```
+
+> **Note:** The `deploy_ae_inline.py` script automatically grants this permission after deployment. You only need to run this manually if you see 403 errors when writing to GCS.
+
 ---
 
 ## Cloud Run Deployment
@@ -146,20 +162,60 @@ Agent Engine is Google Cloud's managed service for production AI agents.
 - **Auto-Scaling**: No container management needed
 - **Query API**: Programmatic access
 
-### Gemini 3 + Agent Engine Workaround
+### Agent Engine Environment Variables
 
-> **Important:** Gemini 3 models require `global` region, but Agent Engine only supports `us-central1`. We use a workaround via `GlobalAdkApp` that restores `GOOGLE_CLOUD_LOCATION=global` after Agent Engine's setup.
->
-> See: [github.com/google/adk-python/issues/3628](https://github.com/google/adk-python/issues/3628)
+> **Important:** Agent Engine has known issues with environment variables - they may not propagate correctly at runtime even when passed via `env_vars` parameter (see [ADK issue #3208](https://github.com/google/adk-python/issues/3208) and [#3628](https://github.com/google/adk-python/issues/3628)).
+
+We use a custom `GlobalAdkApp` class that **force-sets critical env vars** in `set_up()` after Agent Engine's initialization:
+
+**Currently managed env vars:**
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `GOOGLE_CLOUD_LOCATION` | `global` | Required for Gemini 3 models |
+| `GOOGLE_GENAI_USE_VERTEXAI` | `TRUE` | Required for Veo video byte extraction |
 
 **How it works:**
-1. Agent Engine deploys to `us-central1` and overrides `GOOGLE_CLOUD_LOCATION`
-2. `GlobalAdkApp.set_up()` restores `GOOGLE_CLOUD_LOCATION=global` after parent setup
-3. Gemini 3 model calls use the global endpoint
+1. Agent Engine deploys to `us-central1` and may override/ignore env vars
+2. `GlobalAdkApp.set_up()` runs after `super().set_up()`
+3. Critical env vars are force-set via `os.environ["VAR"] = "value"`
+4. Your tools now read the correct values at runtime
+
+**Adding a new environment variable:**
+
+To add a new env var that must be available at runtime in Agent Engine:
+
+1. **Add to `env_vars` in `scripts/deploy_ae_inline.py`** (line ~304):
+   ```python
+   env_vars = {
+       "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
+       "GEMINI_MODEL_LOCATION": "global",
+       "GCS_BUCKET": args.bucket,
+       "YOUR_NEW_VAR": "your_value",  # Add here
+   }
+   ```
+
+2. **Force-set in `app/agent_engine_app.py`** `set_up()` method:
+   ```python
+   def set_up(self) -> None:
+       super().set_up()
+       # ... existing env var restores ...
+
+       # Force-set your new env var
+       os.environ["YOUR_NEW_VAR"] = os.environ.get("YOUR_NEW_VAR", "default_value")
+       print(f"[GlobalAdkApp.set_up] YOUR_NEW_VAR = {os.environ.get('YOUR_NEW_VAR')}")
+   ```
+
+3. **Add debug logging** at module level for visibility:
+   ```python
+   print(f"[GlobalAdkApp] YOUR_NEW_VAR (at import) = {os.environ.get('YOUR_NEW_VAR', 'NOT SET')}")
+   ```
+
+4. **Redeploy** with `make deploy-ae-global`
 
 **Key files:**
-- `app/agent_engine_app.py` - Custom `GlobalAdkApp` class
-- `scripts/deploy_ae_inline.py` - Passes `GEMINI_MODEL_LOCATION=global` env var
+- `app/agent_engine_app.py` - Custom `GlobalAdkApp` class with env var force-setting
+- `scripts/deploy_ae_inline.py` - Passes env vars during deployment
 
 ### Deployment Options
 
@@ -349,6 +405,26 @@ Fix: Export `GOOGLE_MAPS_API_KEY` before deploying. AI-generated maps work witho
 **Video Generation Timeouts**
 
 Veo 3.1 takes 2-3 minutes per video. The deploy script sets a 600s timeout.
+
+**GCS Upload 403 Forbidden (Agent Engine)**
+
+```text
+google.api_core.exceptions.Forbidden: 403 POST https://storage.googleapis.com/upload/storage/v1/b/YOUR_BUCKET/o
+```
+
+Fix: The Reasoning Engine Service Agent needs `storage.objectAdmin` permission. Run:
+
+```bash
+# Get project number
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
+
+# Grant permission
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+```
+
+Or use `make setup-ae-permissions` to grant automatically.
 
 ### View Logs
 

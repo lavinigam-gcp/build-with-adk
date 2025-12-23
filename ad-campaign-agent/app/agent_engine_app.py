@@ -12,14 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Custom AdkApp that preserves GOOGLE_CLOUD_LOCATION for Gemini 3 models.
+"""Custom AdkApp that preserves critical environment variables for Agent Engine.
 
-This module provides a workaround for the Agent Engine location override issue.
-Agent Engine's AdkApp.set_up() overrides GOOGLE_CLOUD_LOCATION to match the
-deployment region (us-central1), which breaks Gemini 3 models that require
-the global endpoint.
+This module provides workarounds for Agent Engine environment variable issues:
 
-Solution: Capture the location before setup, restore it after.
+1. GOOGLE_CLOUD_LOCATION: Agent Engine overrides this to match the deployment
+   region (us-central1), which breaks Gemini 3 models requiring the global endpoint.
+
+2. GOOGLE_GENAI_USE_VERTEXAI: Despite being passed in env_vars, this may not be
+   available at runtime due to ADK bug (GitHub issue #3208). Video generation
+   requires this to be TRUE for the Vertex AI video byte extraction path.
+
+Solution: Force-set critical env vars in set_up() after super().set_up().
 See: https://github.com/google/adk-python/issues/3628#issuecomment-3666413473
 """
 
@@ -37,6 +41,7 @@ GEMINI_MODEL_LOCATION = os.environ.get("GEMINI_MODEL_LOCATION", "global")
 print(f"[GlobalAdkApp] Module imported")
 print(f"[GlobalAdkApp] GEMINI_MODEL_LOCATION = {GEMINI_MODEL_LOCATION}")
 print(f"[GlobalAdkApp] GOOGLE_CLOUD_LOCATION (at import) = {os.environ.get('GOOGLE_CLOUD_LOCATION', 'NOT SET')}")
+print(f"[GlobalAdkApp] GOOGLE_GENAI_USE_VERTEXAI (at import) = {os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'NOT SET')}")
 
 
 class GlobalAdkApp(AdkApp):
@@ -56,9 +61,10 @@ class GlobalAdkApp(AdkApp):
     """
 
     def set_up(self) -> None:
-        """Initialize the app and restore GOOGLE_CLOUD_LOCATION for Gemini 3."""
+        """Initialize the app and restore critical env vars for Gemini 3 and Vertex AI."""
         print(f"[GlobalAdkApp.set_up] Starting set_up...")
         print(f"[GlobalAdkApp.set_up] GOOGLE_CLOUD_LOCATION (before vertexai.init) = {os.environ.get('GOOGLE_CLOUD_LOCATION', 'NOT SET')}")
+        print(f"[GlobalAdkApp.set_up] GOOGLE_GENAI_USE_VERTEXAI (before vertexai.init) = {os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'NOT SET')}")
 
         # Initialize Vertex AI
         vertexai.init()
@@ -71,4 +77,11 @@ class GlobalAdkApp(AdkApp):
         # Restore the location for Gemini 3 models (from GEMINI_MODEL_LOCATION or default 'global')
         os.environ["GOOGLE_CLOUD_LOCATION"] = GEMINI_MODEL_LOCATION
         print(f"[GlobalAdkApp.set_up] GOOGLE_CLOUD_LOCATION (after restore) = {os.environ.get('GOOGLE_CLOUD_LOCATION', 'NOT SET')}")
+
+        # Force-set GOOGLE_GENAI_USE_VERTEXAI=TRUE for video generation
+        # This is required for Veo video byte extraction via Vertex AI
+        # Agent Engine may not properly propagate env_vars (ADK bug #3208)
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "TRUE"
+        print(f"[GlobalAdkApp.set_up] GOOGLE_GENAI_USE_VERTEXAI (forced) = {os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'NOT SET')}")
+
         print(f"[GlobalAdkApp.set_up] set_up complete!")

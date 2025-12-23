@@ -204,7 +204,11 @@ agent = agent_engines.get("YOUR_AGENT_ENGINE_ID")
 response = agent.query(input="List all campaigns")
 ```
 
-> **Note:** Gemini 3 models require `global` region, but Agent Engine only supports `us-central1`. We use a custom `GlobalAdkApp` class that restores `GOOGLE_CLOUD_LOCATION=global` after Agent Engine's setup. See [DEPLOYMENT.md](DEPLOYMENT.md#gemini-3--agent-engine-workaround) for details.
+> **Note:** Agent Engine has known issues with environment variables (they may not propagate correctly at runtime). We use a custom `GlobalAdkApp` class that force-sets critical env vars after Agent Engine's setup. This is required for:
+> - `GOOGLE_CLOUD_LOCATION=global` (Gemini 3 models)
+> - `GOOGLE_GENAI_USE_VERTEXAI=TRUE` (Veo video generation)
+>
+> See [DEPLOYMENT.md](DEPLOYMENT.md#agent-engine-environment-variables) for details on adding new env vars.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
@@ -251,7 +255,7 @@ This agent uses multiple Gemini models. Edit `app/config.py` to customize:
 | **Video Animation** | `veo-3.1-generate-preview` | `global` |
 | **Charts & Maps** | `gemini-3-pro-image-preview` | `global` |
 
-> **Important:** All Gemini 3 models require `global` region. For Agent Engine deployment, we use a custom `GlobalAdkApp` workaround that restores `GOOGLE_CLOUD_LOCATION=global` after Agent Engine's setup. See [github.com/google/adk-python/issues/3628](https://github.com/google/adk-python/issues/3628) for context.
+> **Important:** All Gemini 3 models require `global` region and Veo 3.1 requires `GOOGLE_GENAI_USE_VERTEXAI=TRUE`. For Agent Engine deployment, we use a custom `GlobalAdkApp` class that force-sets these env vars after setup. See [DEPLOYMENT.md](DEPLOYMENT.md#agent-engine-environment-variables) for the pattern.
 >
 > Veo 3.1 requires Vertex AI and takes 2-3 minutes per video generation.
 
@@ -303,6 +307,7 @@ ad-campaign-agent/
 ├── app/                     # Main agent package (ADK discovers root_agent here)
 │   ├── __init__.py          # Exports root_agent for ADK CLI
 │   ├── agent.py             # Multi-agent definitions (4 sub-agents)
+│   ├── agent_engine_app.py  # GlobalAdkApp for Agent Engine env var workarounds
 │   ├── config.py            # Model selection and configuration
 │   ├── storage.py           # GCS/local storage abstraction
 │   ├── requirements.txt     # Python dependencies
@@ -327,7 +332,8 @@ ad-campaign-agent/
 │
 ├── scripts/                 # Deployment scripts
 │   ├── deploy.sh            # Cloud Run deployment
-│   ├── deploy_ae.sh         # Agent Engine deployment
+│   ├── deploy_ae.sh         # Agent Engine deployment (CLI)
+│   ├── deploy_ae_inline.py  # Agent Engine deployment (Python SDK, recommended)
 │   └── setup_gcp.sh         # GCP resource setup
 │
 ├── tests/                   # Test suite
