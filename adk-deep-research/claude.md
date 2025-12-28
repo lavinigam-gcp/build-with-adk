@@ -379,6 +379,9 @@ Track major changes to `app/` agent:
 | Exp # | Name | Status | Outcome |
 |-------|------|--------|---------|
 | 001 | Financial Data Visualization (code_execution_01) | SUCCESS | Multi-agent pipeline combining Google Search + Code Execution to generate financial charts |
+| 002 | HTML Report Generation (code_execution_02) | **SUCCESS - RECOMMENDED** | Extended 01 with 5th agent for self-contained HTML report with embedded chart. Callback-based execution provides 100% reliability. |
+| 003 | Native Code Execution (code_execution_03) | **PAUSED** | Native AgentEngineSandboxCodeExecutor works for simple queries but causes infinite loops on complex queries. Instruction-based STOP conditions insufficient. Gemini 3 Pro has malformed function call issues. Use 02 instead. |
+| 004 | Comprehensive Equity Research (code_execution_04) | **IN DEVELOPMENT** | Multi-chart equity research report generator. Uses ParallelAgent (4 concurrent data fetchers), LoopAgent (chart generation), and custom BaseAgent (ChartProgressChecker). Generates 5-10 charts per professional HTML report. |
 
 ---
 

@@ -13,27 +13,28 @@
 # limitations under the License.
 
 """
-Financial Data Visualization Agent
-==================================
+Financial Data Visualization Agent with HTML Report
+====================================================
 
 A multi-stage agent pipeline that:
 1. Fetches real-time financial data via Google Search
 2. Extracts structured data points from search results (Pydantic)
 3. Generates Python chart code AND executes via callback (ONCE)
-4. Returns summary with chart visualization
+4. Creates a text summary of the analysis
+5. Generates a professional HTML report with embedded chart
 
-Architecture: SequentialAgent with 4 sub-agents + execution callback
+Architecture: SequentialAgent with 5 sub-agents + execution callbacks
 
-Key Design: Code execution happens in a CALLBACK (not an LLM agent) to guarantee
-exactly ONE execution. Using an LLM for code execution can cause loops because
-the model may keep outputting code blocks after seeing execution results.
+Key Design:
+- Code execution happens in a CALLBACK (not an LLM agent) to guarantee
+  exactly ONE execution. Using an LLM for code execution can cause loops.
+- HTML generation uses LLM directly (no sandbox needed for text generation)
+- Chart is embedded as base64 in the HTML for a self-contained report
 
-Sandbox Configuration:
-- If SANDBOX_RESOURCE_NAME env var is set, uses AgentEngineSandboxCodeExecutor
-  (pre-created sandbox for faster execution)
-- Otherwise, uses VertexAiCodeExecutor (creates sandbox on-demand)
+Final Output: Downloadable HTML report artifact
 """
 
+import base64
 import datetime
 import json
 import os
@@ -160,6 +161,12 @@ async def execute_chart_code_callback(callback_context):
                             print(f"Saved chart artifact '{file_name}' as version {version}")
                             output_messages.append(f"Chart saved as artifact: {file_name}")
                             chart_saved = True
+
+                            # Store base64 for HTML report embedding
+                            chart_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                            state["chart_base64"] = chart_base64
+                            state["chart_mime_type"] = output.mime_type or "image/png"
+                            print(f"Stored chart as base64 ({len(chart_base64)} chars)")
                         else:
                             # For non-image files, just log
                             output_messages.append(f"Generated file: {file_name}")
@@ -178,6 +185,278 @@ async def execute_chart_code_callback(callback_context):
         error_msg = f"Code execution failed: {str(e)}"
         print(error_msg)
         state["execution_result"] = error_msg
+
+
+async def save_html_report_callback(callback_context):
+    """Save the generated HTML report as a downloadable artifact.
+
+    This callback runs AFTER the html_report_generator agent finishes,
+    extracts the HTML content, injects the base64 chart, and saves it as an artifact.
+
+    Key optimization: The LLM generates HTML with CHART_IMAGE_PLACEHOLDER, and
+    this callback replaces it with the actual base64 image. This avoids passing
+    the huge base64 string through the LLM's context window.
+    """
+    from google.genai import types
+
+    state = callback_context.state
+    html_report = state.get("html_report", "")
+
+    if not html_report:
+        state["report_result"] = "Error: No HTML report was generated"
+        return
+
+    # Extract HTML from code blocks if the LLM wrapped it
+    html_match = re.search(r"```html\s*(.*?)\s*```", html_report, re.DOTALL)
+    if html_match:
+        html_content = html_match.group(1)
+    else:
+        html_match = re.search(r"```\s*(.*?)\s*```", html_report, re.DOTALL)
+        if html_match:
+            html_content = html_match.group(1)
+        else:
+            # Assume the entire output is HTML
+            html_content = html_report
+
+    # Inject the base64 chart image (optimization: LLM doesn't handle base64)
+    chart_base64 = state.get("chart_base64", "")
+    chart_mime_type = state.get("chart_mime_type", "image/png")
+
+    if chart_base64:
+        # Replace the placeholder with actual base64 image
+        html_content = html_content.replace(
+            "CHART_IMAGE_PLACEHOLDER",
+            f"data:{chart_mime_type};base64,{chart_base64}"
+        )
+        print(f"Injected chart base64 ({len(chart_base64)} chars) into HTML")
+    else:
+        print("Warning: No chart_base64 found in state")
+
+    print(f"Saving HTML report ({len(html_content)} chars)...")
+
+    try:
+        # Save HTML as artifact
+        html_artifact = types.Part.from_bytes(
+            data=html_content.encode('utf-8'),
+            mime_type="text/html"
+        )
+        version = await callback_context.save_artifact(
+            filename="financial_report.html",
+            artifact=html_artifact
+        )
+        print(f"Saved HTML report artifact as version {version}")
+        state["report_result"] = f"Report saved as artifact: financial_report.html (version {version})"
+
+    except Exception as e:
+        error_msg = f"Failed to save HTML report: {str(e)}"
+        print(error_msg)
+        state["report_result"] = error_msg
+
+
+# --- HTML Report Template ---
+# Professional template for the financial report
+# NOTE: Double braces {{ }} are used to escape from ADK's template engine
+# so they pass through as literal single braces for the LLM to fill in
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Analysis Report</title>
+    <style>
+        * {{ box-sizing: border-box; }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }}
+        .report-container {{
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            padding: 50px;
+        }}
+        .header {{
+            border-bottom: 3px solid #4285f4;
+            padding-bottom: 25px;
+            margin-bottom: 35px;
+        }}
+        .header h1 {{
+            color: #1a73e8;
+            margin: 0 0 10px 0;
+            font-size: 2.2em;
+        }}
+        .header .subtitle {{
+            color: #5f6368;
+            font-size: 1.1em;
+            margin: 0;
+        }}
+        .header .date {{
+            color: #9aa0a6;
+            font-size: 0.9em;
+            margin-top: 8px;
+        }}
+        .section {{
+            margin-bottom: 35px;
+        }}
+        .section h2 {{
+            color: #202124;
+            border-left: 4px solid #4285f4;
+            padding-left: 15px;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }}
+        .section p {{
+            color: #3c4043;
+            line-height: 1.7;
+        }}
+        .chart-container {{
+            text-align: center;
+            margin: 40px 0;
+            padding: 20px;
+            background: #fafafa;
+            border-radius: 8px;
+        }}
+        .chart-container img {{
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+        }}
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.95em;
+        }}
+        .data-table th, .data-table td {{
+            padding: 14px 18px;
+            text-align: left;
+            border-bottom: 1px solid #e8eaed;
+        }}
+        .data-table th {{
+            background: #f8f9fa;
+            color: #202124;
+            font-weight: 600;
+        }}
+        .data-table tr:hover {{
+            background: #f1f3f4;
+        }}
+        .key-findings ul {{
+            list-style: none;
+            padding: 0;
+        }}
+        .key-findings li {{
+            padding: 14px 18px;
+            margin: 10px 0;
+            background: linear-gradient(90deg, #e8f0fe 0%, #f8f9fa 100%);
+            border-radius: 6px;
+            border-left: 4px solid #4285f4;
+            color: #202124;
+        }}
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }}
+        .metric-card {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+        }}
+        .metric-card .value {{
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }}
+        .metric-card .label {{
+            font-size: 0.9em;
+            opacity: 0.9;
+        }}
+        .footer {{
+            margin-top: 50px;
+            padding-top: 25px;
+            border-top: 1px solid #e8eaed;
+            color: #9aa0a6;
+            font-size: 0.85em;
+            text-align: center;
+        }}
+        .footer a {{
+            color: #1a73e8;
+            text-decoration: none;
+        }}
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <!-- HEADER -->
+        <div class="header">
+            <h1>REPORT_TITLE_PLACEHOLDER</h1>
+            <p class="subtitle">ENTITY_PLACEHOLDER - METRIC_PLACEHOLDER</p>
+            <p class="date">Generated on DATE_PLACEHOLDER</p>
+        </div>
+
+        <!-- EXECUTIVE SUMMARY -->
+        <div class="section">
+            <h2>Executive Summary</h2>
+            SUMMARY_HTML_PLACEHOLDER
+        </div>
+
+        <!-- KEY METRICS -->
+        <div class="section">
+            <h2>Key Metrics</h2>
+            <div class="metrics-grid">
+                METRICS_CARDS_PLACEHOLDER
+            </div>
+        </div>
+
+        <!-- CHART VISUALIZATION -->
+        <div class="section chart-container">
+            <h2>Data Visualization</h2>
+            <img src="CHART_IMAGE_PLACEHOLDER" alt="Financial Chart">
+        </div>
+
+        <!-- DATA TABLE -->
+        <div class="section">
+            <h2>Data Points</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th>Value</th>
+                        <th>Unit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    DATA_ROWS_PLACEHOLDER
+                </tbody>
+            </table>
+        </div>
+
+        <!-- KEY FINDINGS -->
+        <div class="section key-findings">
+            <h2>Key Findings</h2>
+            <ul>
+                KEY_FINDINGS_PLACEHOLDER
+            </ul>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <p>Data Source: DATA_SOURCE_PLACEHOLDER</p>
+            <p>Report generated by Financial Data Visualization Agent using Google ADK</p>
+            <p>Powered by Gemini 3 Pro Preview</p>
+        </div>
+    </div>
+</body>
+</html>
+'''
 
 
 # --- Structured Output Models ---
@@ -410,29 +689,98 @@ Keep concise - 200-300 words.
 )
 
 
+# Stage 5: HTML Report Generator Agent
+# Uses LLM to generate a professional HTML report
+# Note: The chart image is injected by the callback (not handled by LLM)
+html_report_generator = LlmAgent(
+    model=MODEL,
+    name="html_report_generator",
+    description="Generates a professional HTML report with data visualization.",
+    instruction=f"""
+You are an HTML report generator. Create a complete, self-contained HTML financial report.
+
+**Inputs Available:**
+- Structured data: `{{structured_data}}`
+- Summary: `{{final_summary}}`
+
+**Your Task:**
+Generate a complete HTML document using the template structure shown below.
+
+{HTML_TEMPLATE}
+
+**Requirements:**
+
+1. **Replace ALL PLACEHOLDER text** with actual content from the inputs:
+   - `REPORT_TITLE_PLACEHOLDER`: Create a descriptive title (e.g., "Google Annual Revenue Analysis 2020-2024")
+   - `ENTITY_PLACEHOLDER`: Extract from structured_data.entity
+   - `METRIC_PLACEHOLDER`: Extract from structured_data.metric
+   - `DATE_PLACEHOLDER`: Use current date: {CURRENT_DATE}
+   - `SUMMARY_HTML_PLACEHOLDER`: Convert final_summary markdown to HTML paragraphs
+   - `METRICS_CARDS_PLACEHOLDER`: Create 3-4 metric cards showing key stats (highest, lowest, average, growth rate)
+   - `DATA_ROWS_PLACEHOLDER`: Create <tr> rows from structured_data.data_points
+   - `KEY_FINDINGS_PLACEHOLDER`: Extract key points as <li> items
+   - `DATA_SOURCE_PLACEHOLDER`: Use structured_data.data_source
+
+2. **Chart placeholder** - Keep CHART_IMAGE_PLACEHOLDER exactly as-is in the img src:
+   <img src="CHART_IMAGE_PLACEHOLDER" alt="Financial Chart">
+   Do NOT replace this placeholder - the system will inject the chart automatically.
+
+3. **Metrics cards format** (create 3-4 of these):
+   <div class="metric-card">
+       <div class="value">$350.02B</div>
+       <div class="label">Highest Revenue</div>
+   </div>
+
+4. **Data rows format** (one per data point):
+   <tr>
+       <td>2024</td>
+       <td>350.02</td>
+       <td>Billions USD</td>
+   </tr>
+
+5. **Key findings format** (3-5 insights as list items):
+   <li>Revenue grew 91.8% from 2020 to 2024</li>
+
+**Output:**
+Return ONLY the complete HTML document. No markdown code blocks, no explanations.
+The HTML must be valid and self-contained.
+""",
+    output_key="html_report",
+    # Callback injects base64 chart and saves as artifact
+    after_agent_callback=save_html_report_callback,
+)
+
+
 # --- Main Pipeline ---
 
 # Combine all agents into a sequential pipeline
-financial_data_pipeline = SequentialAgent(
-    name="financial_data_visualization_pipeline",
+financial_report_pipeline = SequentialAgent(
+    name="financial_report_pipeline",
     description="""
-    A 4-stage pipeline for financial data visualization:
+    A 5-stage pipeline for financial data visualization with HTML report:
     1. Fetches data via Google Search
     2. Extracts structured data points (Pydantic schema)
-    3. Generates chart code + executes via callback (ONCE)
-    4. Creates summary with insights
+    3. Generates chart code + executes via callback (saves chart + base64)
+    4. Creates text summary with insights
+    5. Generates HTML report + saves as downloadable artifact
 
-    Key: Code execution happens in a CALLBACK (not an LLM agent) to
-    guarantee exactly ONE execution with no infinite loop risk.
+    Key Design Decisions:
+    - Code execution happens in a CALLBACK (not an LLM agent) to
+      guarantee exactly ONE execution with no infinite loop risk.
+    - HTML generation uses LLM directly (no sandbox needed for text)
+    - Chart is embedded as base64 for self-contained HTML report
+
+    Final Output: Downloadable HTML report artifact (financial_report.html)
     """,
     sub_agents=[
         data_fetcher_agent,      # Step 1: Google Search → raw_financial_data
         data_extractor_agent,    # Step 2: Extract → structured_data
-        code_generator_agent,    # Step 3: Generate code → chart_code, then callback executes
+        code_generator_agent,    # Step 3: Generate code → chart_code, callback → chart_base64
         summary_agent,           # Step 4: Summarize → final_summary
+        html_report_generator,   # Step 5: Generate HTML → html_report artifact
     ],
 )
 
 
 # Root agent - entry point
-root_agent = financial_data_pipeline
+root_agent = financial_report_pipeline
