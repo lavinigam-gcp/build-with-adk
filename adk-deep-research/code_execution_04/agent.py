@@ -111,6 +111,21 @@ class ResearchPlan(BaseModel):
     )
 
 
+class QueryClassification(BaseModel):
+    """Classification of user message as new query vs follow-up to previous query."""
+
+    query_type: str = Field(
+        description="Classification result: 'NEW_QUERY' or 'FOLLOW_UP'"
+    )
+    reasoning: str = Field(
+        description="Brief explanation of why this classification was chosen"
+    )
+    detected_company: str = Field(
+        default="",
+        description="Company/stock ticker mentioned in message, if any"
+    )
+
+
 class DataPoint(BaseModel):
     """A single data point for a metric."""
 
@@ -855,8 +870,9 @@ async def execute_chart_code_callback(callback_context):
 
 
 async def initialize_charts_state_callback(callback_context):
-    """Initialize charts_generated, charts_summary, and infographics_summary lists after data consolidation.
+    """Initialize or reset charts_generated, charts_summary, and infographics_summary based on query classification.
 
+    Uses the query_classifier agent's output to determine if this is a NEW_QUERY (reset state) or FOLLOW_UP (preserve state).
     This ensures the template variables exist in state before the chart/infographic generation starts.
     """
     print("\n" + "="*80)
@@ -868,26 +884,38 @@ async def initialize_charts_state_callback(callback_context):
     print(f"📋 Agent: {callback_context.agent_name}")
     print(f"🔑 Invocation ID: {callback_context.invocation_id}")
 
-    # Initialize charts_generated as empty list if not exists
+    # NEW: Check query classification from classifier agent
+    classification = state.get("query_classification")
+    query_type = classification.get("query_type", "NEW_QUERY") if classification else "NEW_QUERY"
+    reasoning = classification.get("reasoning", "No classification available") if classification else "No classification available"
+
+    print(f"\n🔍 Query Classification: {query_type}")
+    print(f"   Reasoning: {reasoning}")
+
+    if query_type == "NEW_QUERY":
+        # New query detected - reset visualization state
+        print(f"\n🔄 NEW QUERY - Resetting visualization state")
+        print("   Clearing old chart and infographic state for fresh analysis...")
+
+        state["charts_generated"] = []
+        state["charts_summary"] = []
+        state["infographics_summary"] = []
+
+        print("✓ Cleared all chart and infographic state for fresh analysis")
+    else:  # FOLLOW_UP
+        print(f"\n↪️  FOLLOW-UP QUERY - Preserving existing state")
+        print(f"   Current state:")
+        print(f"   - charts_generated: {len(state.get('charts_generated', []))} items")
+        print(f"   - charts_summary: {len(state.get('charts_summary', []))} items")
+        print(f"   - infographics_summary: {len(state.get('infographics_summary', []))} items")
+
+    # Ensure state variables exist (defensive programming)
     if "charts_generated" not in state:
         state["charts_generated"] = []
-        print("✓ Initialized charts_generated = []")
-    else:
-        print(f"✓ charts_generated already exists (length: {len(state.get('charts_generated', []))})")
-
-    # Initialize charts_summary (without base64) for LLM agents
     if "charts_summary" not in state:
         state["charts_summary"] = []
-        print("✓ Initialized charts_summary = []")
-    else:
-        print(f"✓ charts_summary already exists (length: {len(state.get('charts_summary', []))})")
-
-    # Initialize infographics_summary (without base64) for LLM agents
     if "infographics_summary" not in state:
         state["infographics_summary"] = []
-        print("✓ Initialized infographics_summary = []")
-    else:
-        print(f"✓ infographics_summary already exists (length: {len(state.get('infographics_summary', []))})")
 
     print("="*80 + "\n")
 
@@ -1055,6 +1083,18 @@ async def save_html_report_callback(callback_context):
         )
         print(f"   ✅ Saved equity_report.html as version {version}")
         state["report_result"] = f"Report saved: equity_report.html (version {version})"
+
+        # NEW: Save query summary for next classification
+        print(f"\n📝 Saving query summary for future classification...")
+        research_plan = state.get("research_plan")
+        if research_plan:
+            company = research_plan.get("company_name", "Unknown")
+            ticker = research_plan.get("ticker", "")
+            state["last_query_summary"] = f"Company: {company} ({ticker}), Analysis completed"
+            print(f"   ✓ Saved query summary: Company={company}, Ticker={ticker}")
+        else:
+            state["last_query_summary"] = "Previous analysis completed (no company details available)"
+            print(f"   ⚠ No research plan found, saved generic summary")
 
         print("="*80 + "\n")
 
@@ -1497,6 +1537,54 @@ HTML_TEMPLATE = '''
 # =============================================================================
 # AGENT DEFINITIONS
 # =============================================================================
+
+# --- Stage 0: Query Classifier Agent ---
+query_classifier = LlmAgent(
+    model="gemini-2.5-flash",  # Fast, cheap model for classification
+    name="query_classifier",
+    description="Classifies whether user message is a new equity research query or a follow-up to previous query",
+    output_schema=QueryClassification,
+    output_key="query_classification",
+    instruction="""
+You are a query classifier for an equity research agent. Your job is to determine if the user's message is:
+
+1. **NEW_QUERY**: User wants to analyze a DIFFERENT company OR start fresh analysis
+   Examples:
+   - "Analyze Apple stock"
+   - "Comprehensive research on TSMC"
+   - "Now do Microsoft instead"
+   - "What about Tesla?"
+   - "Give me equity research on Amazon"
+
+2. **FOLLOW_UP**: User wants to extend/refine the CURRENT analysis
+   Examples:
+   - "Add a chart for Operating Margin"
+   - "Can you include risk analysis?"
+   - "What's the P/E ratio again?"
+   - "Now analyze cash flow trends"
+   - "Also show me EPS data"
+
+**Analysis Process**:
+1. Look at the previous query summary below (if it exists)
+2. Check if user mentions a DIFFERENT company/ticker than before
+3. Check if user is requesting ADDITIONAL analysis for the SAME company
+4. Check for words like "also", "additionally", "furthermore" (follow-up indicators)
+5. Check for complete new research requests (new query indicators)
+
+**Decision Rules**:
+- If DIFFERENT company mentioned → NEW_QUERY
+- If SAME company + additional request → FOLLOW_UP
+- If no previous context exists → NEW_QUERY (first query in session)
+- If ambiguous + no previous context → NEW_QUERY
+- If question about previous results → FOLLOW_UP
+
+**Previous Context:**
+{{ last_query_summary }}
+
+**Your Task:**
+Analyze the user's current message in this conversation and classify it as NEW_QUERY or FOLLOW_UP. Provide reasoning for your decision and extract the company name/ticker if mentioned.
+""",
+)
 
 # --- Stage 1: Research Planner Agent ---
 research_planner = LlmAgent(
@@ -2205,6 +2293,44 @@ equity_research_pipeline = SequentialAgent(
     ],
 )
 
+async def ensure_classifier_state_callback(callback_context):
+    """Ensure last_query_summary exists before query_classifier runs.
 
-# Root agent - entry point
-root_agent = equity_research_pipeline
+    On the first query in a session, last_query_summary won't exist yet and
+    template variable injection will fail with KeyError. Initialize with
+    default value if missing.
+    """
+    state = callback_context.state
+
+    if "last_query_summary" not in state:
+        state["last_query_summary"] = "No previous query context (first query in session)"
+        print("✓ Initialized last_query_summary for first query in session")
+
+
+# --- Wrapper Pipeline with Query Classification ---
+equity_research_with_classifier = SequentialAgent(
+    name="equity_research_with_classifier",
+    description="""
+    Equity research pipeline with intelligent query classification for multi-query sessions.
+
+    Stage 0: Query Classifier - Classifies user message as NEW_QUERY or FOLLOW_UP
+        - NEW_QUERY: Different company → resets visualization state (charts, infographics)
+        - FOLLOW_UP: Same company, additional request → preserves state
+
+    Stages 1-8: Standard equity research pipeline
+
+    This wrapper enables:
+    - Multiple companies analyzed in same session without chart collisions
+    - Follow-up queries like "Add Operating Margin chart" preserve existing state
+    - Intelligent semantic detection using company name comparison
+    """,
+    before_agent_callback=ensure_classifier_state_callback,  # Initialize state before classifier runs
+    sub_agents=[
+        query_classifier,              # Stage 0: Classify query type
+        equity_research_pipeline,      # Stages 1-8: Main pipeline
+    ],
+)
+
+
+# Root agent - entry point (with query classification)
+root_agent = equity_research_with_classifier
