@@ -1,17 +1,25 @@
-# Experiment 004: Comprehensive Equity Research Report Agent
+# Experiment 004: Professional-Grade Equity Research Report Agent
 
-## Status: WORKING
+## Status: WORKING (v2.0 - Professional Grade) ✅
 
-A sophisticated multi-chart equity research report generator that produces professional investment reports with multiple visualizations, AI-generated infographics, data tables, and comprehensive company coverage.
+**Version 2.0 (2025-12-30)**: Upgraded to Morgan Stanley / Goldman Sachs standards with "Setup → Visual → Interpretation" pattern for all visuals.
+
+A sophisticated multi-chart equity research report generator that produces **professional investment-grade reports** with contextualized visualizations, AI-generated infographics, data tables, and comprehensive company coverage.
+
+**v2.0 Key Improvements**:
+- ✅ All infographics: Square (1:1), 2K resolution, white/light themes
+- ✅ Visual contextualization: Every chart/infographic has Setup + Interpretation text
+- ✅ Dynamic infographic count: 2-5 infographics based on query complexity
+- ✅ Professional narrative structure: Reports read like analyst reports, not placeholder documents
 
 **Key Innovation**: Given a query like "Do a fundamental analysis of Alphabet", the agent will:
 1. **Plan** - Identify company and plan which metrics/charts are needed
 2. **Fetch** - Gather data from 4 parallel sources (financial, valuation, market, news)
 3. **Consolidate** - Merge all data into structured format
 4. **Visualize** - Generate multiple charts (5-10) using a LoopAgent
-5. **Infographics** - Generate 3 AI-powered infographics using Gemini 3 Pro Image
-6. **Analyze** - Write professional narrative analysis sections
-7. **Report** - Create a multi-page HTML report with charts, infographics, and data tables
+5. **Infographics** - Generate 2-5 AI-powered infographics using Gemini 3 Pro Image (v2.0: dynamic count)
+6. **Analyze** - Write professional narrative with **visual contextualization** (v2.0: Setup→Visual→Interpretation)
+7. **Report** - Create a professional HTML report with contextualized visuals (v2.0: no standalone placeholders)
 
 ---
 
@@ -22,7 +30,7 @@ A sophisticated multi-chart equity research report generator that produces profe
 | Charts | 1 chart per query | **Multiple charts (5-10)** |
 | Data Gathering | Sequential (1 agent) | **Parallel (4 concurrent agents)** |
 | Chart Generation | Single execution | **LoopAgent iterates through metrics** |
-| **Infographics** | None | **3 AI-generated infographics (parallel)** |
+| **Infographics** | None | **2-5 AI-generated infographics (v2.0: dynamic, parallel)** |
 | **Data Tables** | None | **Raw numerical data tables** |
 | Report Structure | Single-page | **Multi-section professional report** |
 | Metrics Coverage | User-specified | **Auto-planned based on query** |
@@ -185,22 +193,32 @@ class ResearchPlan(BaseModel):
     report_sections: list[str]
 ```
 
+### Visual Contextualization (v2.0 NEW)
+
+```python
+class VisualContext(BaseModel):
+    """Setup → Visual → Interpretation pattern for professional reports."""
+    visual_id: str          # "chart_1", "infographic_2", etc.
+    visual_type: Literal["chart", "infographic", "table"]
+    setup_text: str         # 1-2 sentences BEFORE visual
+    interpretation_text: str # 1-2 sentences AFTER visual
+
 ### Infographic Planning (NEW)
 
 ```python
 class InfographicSpec(BaseModel):
     """Specification for an infographic."""
-    infographic_id: int     # 1, 2, or 3
+    infographic_id: int     # 1, 2, 3, 4, or 5
     title: str              # e.g., "Business Model Overview"
-    infographic_type: Literal["business_model", "competitive_landscape", "growth_drivers"]
+    infographic_type: Literal["business_model", "competitive_landscape", "growth_drivers", "market_position", "risk_landscape"]
     key_elements: list[str] # Data points to visualize
     visual_style: str       # Style description
-    prompt: str             # Detailed image generation prompt
+    prompt: str             # Detailed image generation prompt (v2.0: white theme enforced)
 
 class InfographicPlan(BaseModel):
     """Plan for all infographics."""
     company_name: str
-    infographics: list[InfographicSpec]  # Always 3 infographics
+    infographics: list[InfographicSpec]  # v2.0: 2-5 infographics (dynamic)
 
 class InfographicResult(BaseModel):
     """Result of infographic generation."""
@@ -298,7 +316,10 @@ async def generate_infographic(
         contents=prompt,
         config=genai_types.GenerateContentConfig(
             response_modalities=["IMAGE", "TEXT"],
-            image_config=genai_types.ImageConfig(aspect_ratio="16:9"),
+            image_config=genai_types.ImageConfig(
+                aspect_ratio="1:1",     # Square format for professional reports
+                image_size="2K"          # High quality (1K, 2K, or 4K)
+            ),
         ),
     )
 
@@ -363,17 +384,102 @@ FOOTER
 
 ## Test Queries
 
-**Simple:**
+### Simple (2-3 infographics)
 - "Analyze Apple stock"
 - "Do a fundamental analysis of Microsoft"
 
-**Medium:**
-- "Do a comprehensive equity research on Alphabet"
-- "Analyze NVIDIA's valuation and growth prospects"
+### Medium-High Complexity (3-4 infographics)
 
-**Complex:**
-- "Compare Tesla vs Ford - comprehensive equity research"
-- "Full fundamental analysis of Amazon including cloud segment"
+**Financial Services Deep Dive:**
+```
+Equity research on JPMorgan Chase analyzing net interest margin trends, investment banking pipeline, wealth management growth, credit quality metrics, and regulatory capital requirements.
+```
+
+**Healthcare Innovation:**
+```
+Fundamental analysis of Eli Lilly focusing on GLP-1 obesity drug pipeline, Alzheimer's treatment commercialization, patent cliff risks, and competitive positioning against Novo Nordisk.
+```
+
+**Cloud Infrastructure:**
+```
+Analyze Alphabet with focus on Google Cloud profitability inflection, YouTube monetization, Search advertising resilience, AI integration across products (Gemini, Bard), and regulatory headwinds.
+```
+
+**Payment Processing:**
+```
+Research Visa covering payment volume trends, cross-border transaction growth, competitive threats from fintech, blockchain/crypto positioning, and operating leverage potential.
+```
+
+**Industrial Automation:**
+```
+Analyze Rockwell Automation evaluating smart manufacturing adoption, software subscription transition, supply chain normalization, and competitive dynamics with Siemens and Schneider Electric.
+```
+
+### High Complexity (4-5 infographics)
+
+**Multi-Segment Analysis:**
+```
+Do a comprehensive equity research on Amazon covering AWS cloud growth, e-commerce profitability, and advertising revenue streams. Include competitive positioning against Microsoft Azure and Google Cloud.
+```
+
+**Tech Transformation Analysis:**
+```
+Full fundamental analysis of Microsoft including Azure cloud dominance, AI Copilot monetization strategy, gaming division performance, and LinkedIn integration. Assess the impact of OpenAI partnership on future growth.
+```
+
+**Sector Leadership Assessment:**
+```
+Analyze NVIDIA's position in the AI chip market with deep dive into data center revenue, gaming GPU trends, automotive AI partnerships, and competitive threats from AMD and custom AI chips from Google/Amazon.
+```
+
+**Turnaround Story Analysis:**
+```
+Comprehensive research on Intel covering manufacturing roadmap (Intel 4, Intel 3, 18A nodes), competitive position against TSMC and Samsung, foundry business strategy, and PC/server market share trends.
+```
+
+**Disruption & Innovation:**
+```
+Analyze Tesla covering automotive production scaling, Full Self-Driving technology progress, energy storage business growth, competitive landscape against traditional OEMs and EV startups, and margin sustainability.
+```
+
+### Maximum Complexity (5 infographics - stress tests)
+
+**Conglomerate Breakdown:**
+```
+Comprehensive analysis of Berkshire Hathaway covering insurance float utilization, equity portfolio performance, operating businesses valuation (BNSF, utilities, manufacturing), succession planning, and intrinsic value calculation.
+```
+
+**Platform Economics:**
+```
+Full research on Meta Platforms analyzing user engagement trends across Facebook/Instagram/WhatsApp, Reels monetization, Reality Labs investment thesis, AI-driven ad targeting improvements, and regulatory challenges.
+```
+
+**Subscription Model Transition:**
+```
+Analyze Adobe's business model evolution from perpetual licenses to Creative Cloud subscriptions, Firefly AI integration, Figma acquisition impact, enterprise adoption trends, and competitive moats.
+```
+
+**Emerging Market Leader:**
+```
+Equity research on Taiwan Semiconductor (TSMC) covering advanced node leadership (3nm, 2nm roadmap), customer concentration risk (Apple, NVIDIA), geopolitical risks, capex intensity, and margin sustainability.
+```
+
+**Cyclical Recovery Play:**
+```
+Analyze Caterpillar assessing construction equipment demand recovery, mining equipment super-cycle thesis, dealer inventory levels, services revenue growth, and emerging markets exposure.
+```
+
+### Recommended Testing Sequence
+1. **Start with**: NVIDIA (high complexity) - validates multi-segment analysis
+2. **Then test**: Alphabet (medium-high) - validates cloud/advertising coverage
+3. **Stress test**: Meta Platforms (maximum) - validates platform economics handling
+
+**What Each Test Validates:**
+- ✅ Dynamic infographic count (2-5 based on query complexity)
+- ✅ Sector-agnostic research (tech, finance, healthcare, industrials, cyclicals)
+- ✅ Setup → Visual → Interpretation pattern for all visuals
+- ✅ White/light theme infographics (1:1, 2K)
+- ✅ Professional narrative quality (Morgan Stanley/Goldman Sachs standards)
 
 ---
 
@@ -480,9 +586,14 @@ HTML uses placeholders that callbacks replace with base64:
 
 ---
 
-**Last Updated**: 2025-12-28
-**Experiment Status**: WORKING
+**Last Updated**: 2025-12-30 (v2.0)
+**Experiment Status**: WORKING - PROFESSIONAL GRADE
 **Base Experiment**: code_execution_02 (SUCCESS - RECOMMENDED)
 **Key ADK Features**: ParallelAgent, LoopAgent, Custom BaseAgent, FunctionTool
-**Expected Charts**: 5-10 per report
-**Expected Infographics**: 3 per report (Business Model, Competitive Landscape, Growth Drivers)
+**Expected Charts**: 5-10 per report (all contextualized with Setup→Visual→Interpretation)
+**Expected Infographics**: 2-5 per report (dynamic, 1:1, 2K, white theme)
+**Report Quality**: Morgan Stanley / Goldman Sachs standards
+
+**v2.0 Documentation**:
+- Implementation Summary: `.docs/IMPLEMENTATION_SUMMARY.md`
+- Overhaul Plan: `.docs/OVERHAUL_PLAN.md`

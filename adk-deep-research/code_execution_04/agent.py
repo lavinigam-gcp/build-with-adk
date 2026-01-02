@@ -38,7 +38,7 @@ Final Output: Downloadable HTML report artifact (equity_report.html)
 """
 
 import base64
-import datetime
+from datetime import datetime
 import json
 import os
 import re
@@ -55,7 +55,7 @@ from pydantic import BaseModel, Field
 # --- Configuration ---
 MODEL = "gemini-3-flash-preview"  # Gemini 3 Flash Preview for all agents
 IMAGE_MODEL = "gemini-3-pro-image-preview"  # Gemini 3 Pro for image generation
-CURRENT_DATE = datetime.datetime.now().strftime("%Y-%m-%d")
+CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
 
 
 # =============================================================================
@@ -201,29 +201,87 @@ class ChartResult(BaseModel):
     )
 
 
+class VisualContext(BaseModel):
+    """Contextualization for a single visual using Setup→Visual→Interpretation pattern."""
+
+    visual_id: str = Field(
+        description="Identifier for the visual: 'chart_1', 'chart_2', 'infographic_1', etc."
+    )
+    visual_type: Literal["chart", "infographic", "table"] = Field(
+        description="Type of visual"
+    )
+    setup_text: str = Field(
+        description="1-2 sentences BEFORE the visual explaining what we're looking at and why it matters"
+    )
+    interpretation_text: str = Field(
+        description="1-2 sentences AFTER the visual explaining insights, implications, and investment thesis connection"
+    )
+
+
 class AnalysisSections(BaseModel):
-    """Narrative analysis sections for the report."""
+    """Narrative analysis sections with integrated visual contextualization."""
 
     executive_summary: str = Field(
         description="1-2 paragraph executive summary with investment recommendation"
     )
-    company_overview: str = Field(
-        description="Company description, business model, competitive position"
+
+    # Company Overview Section
+    company_overview_intro: str = Field(
+        description="Opening paragraph introducing the company"
     )
-    financial_analysis: str = Field(
-        description="Analysis of revenue, profit, margins, EPS trends"
+    company_overview_visual_contexts: list[VisualContext] = Field(
+        default_factory=list,
+        description="Contextualization for infographics in company overview (business model, competitive landscape)"
     )
-    valuation_analysis: str = Field(
-        description="Analysis of P/E, P/B, EV/EBITDA, fair value assessment"
+    company_overview_conclusion: str = Field(
+        default="",
+        description="Concluding paragraph after company overview visuals"
     )
-    growth_outlook: str = Field(
-        description="Growth catalysts, future opportunities"
+
+    # Financial Performance Section
+    financial_intro: str = Field(
+        description="Introduction paragraph before financial charts"
     )
+    financial_visual_contexts: list[VisualContext] = Field(
+        default_factory=list,
+        description="Setup+Interpretation for each financial chart (revenue, profit, margins, EPS)"
+    )
+    financial_conclusion: str = Field(
+        description="Conclusion paragraph synthesizing financial performance insights"
+    )
+
+    # Valuation Analysis Section
+    valuation_intro: str = Field(
+        description="Introduction paragraph before valuation analysis"
+    )
+    valuation_visual_contexts: list[VisualContext] = Field(
+        default_factory=list,
+        description="Setup+Interpretation for each valuation chart (P/E, EV/EBITDA, etc.)"
+    )
+    valuation_conclusion: str = Field(
+        description="Conclusion paragraph with fair value assessment"
+    )
+
+    # Growth Outlook Section
+    growth_intro: str = Field(
+        description="Introduction paragraph before growth analysis"
+    )
+    growth_visual_contexts: list[VisualContext] = Field(
+        default_factory=list,
+        description="Setup+Interpretation for growth charts and infographics"
+    )
+    growth_conclusion: str = Field(
+        description="Conclusion paragraph on growth prospects"
+    )
+
+    # Risks & Concerns
     risks_concerns: str = Field(
-        description="Key risk factors and headwinds"
+        description="Comprehensive risk analysis with bullet points or paragraphs"
     )
+
+    # Investment Recommendation
     investment_recommendation: str = Field(
-        description="Buy/Hold/Sell recommendation with rationale"
+        description="Buy/Hold/Sell recommendation with clear rationale and price target"
     )
 
 
@@ -326,7 +384,8 @@ async def generate_infographic(
             config=genai_types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
                 image_config=genai_types.ImageConfig(
-                    aspect_ratio="16:9"
+                    aspect_ratio="1:1",        # Square format for professional reports
+                    image_size="2K"             # High quality for presentations
                 ),
             ),
         )
@@ -398,6 +457,209 @@ async def generate_infographic(
 generate_infographic_tool = FunctionTool(generate_infographic)
 
 
+async def generate_all_infographics(
+    infographic_plan: dict,  # JSON serialized InfographicPlan
+    tool_context: ToolContext
+) -> dict:
+    """Generate ALL infographics from plan in parallel using asyncio.gather().
+
+    This is the new batch tool that replaces 3 hardcoded generators.
+    Handles 2-5 infographics dynamically based on plan.
+
+    Args:
+        infographic_plan: Complete infographic plan with 2-5 infographic specs
+        tool_context: ADK tool context for state and artifact access
+
+    Returns:
+        dict with success status and list of generated infographics
+    """
+    from google import genai
+    from google.genai import types as genai_types
+    import asyncio
+
+    print("\n" + "="*80)
+    print("BATCH INFOGRAPHIC GENERATION - START")
+    print("="*80)
+
+    print(f"🔧 Tool Context - State access available: {hasattr(tool_context, 'state')}")
+
+    # Extract infographics list from plan
+    infographics_specs = infographic_plan.get("infographics", [])
+    total_count = len(infographics_specs)
+
+    print(f"📊 Plan contains {total_count} infographics to generate")
+    print(f"📋 Infographic IDs: {[spec['infographic_id'] for spec in infographics_specs]}")
+    print(f"📋 Titles: {[spec['title'] for spec in infographics_specs]}")
+
+    if total_count == 0:
+        print("⚠️  WARNING: No infographics in plan, skipping generation")
+        return {
+            "success": False,
+            "error": "No infographics in plan",
+            "total_requested": 0,
+            "successfully_generated": 0,
+            "results": []
+        }
+
+    # Initialize Vertex AI client (shared across all generations)
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+
+    print(f"🔧 Initializing Vertex AI client (project={project_id}, location={location})")
+
+    client = genai.Client(
+        vertexai=True,
+        project=project_id,
+        location=location
+    )
+
+    async def generate_single(infographic_spec: dict, index: int) -> dict:
+        """Generate one infographic asynchronously with detailed logging."""
+        infographic_id = infographic_spec.get("infographic_id")
+        title = infographic_spec.get("title", f"Infographic {infographic_id}")
+        prompt = infographic_spec.get("prompt", "")
+        infographic_type = infographic_spec.get("infographic_type", "unknown")
+
+        print(f"\n🎨 [{index+1}/{total_count}] Starting generation for infographic #{infographic_id}")
+        print(f"   Title: {title}")
+        print(f"   Type: {infographic_type}")
+        print(f"   Prompt length: {len(prompt)} chars")
+
+        try:
+            # Generate with Gemini 3 Pro Image
+            print(f"   ⏳ Calling Gemini 3 Pro Image API...")
+            response = client.models.generate_content(
+                model=IMAGE_MODEL,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                    image_config=genai_types.ImageConfig(
+                        aspect_ratio="1:1",
+                        image_size="2K"
+                    ),
+                ),
+            )
+
+            print(f"   ✓ API response received for infographic #{infographic_id}")
+
+            # Extract image bytes
+            image_bytes = None
+            for part in response.candidates[0].content.parts:
+                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                    image_bytes = part.inline_data.data
+                    print(f"   ✓ Image data extracted ({len(image_bytes)} bytes)")
+                    break
+
+            if not image_bytes:
+                print(f"   ✗ ERROR: No image data in API response for infographic #{infographic_id}")
+                return {
+                    "success": False,
+                    "error": "No image generated in API response",
+                    "infographic_id": infographic_id
+                }
+
+            # Save as artifact
+            filename = f"infographic_{infographic_id}.png"
+            image_artifact = genai_types.Part.from_bytes(
+                data=image_bytes,
+                mime_type="image/png"
+            )
+            version = await tool_context.save_artifact(
+                filename=filename,
+                artifact=image_artifact
+            )
+            print(f"   ✓ Saved artifact '{filename}' (version {version})")
+
+            # Encode as base64 for HTML embedding
+            infographic_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
+            result = {
+                "success": True,
+                "infographic_id": infographic_id,
+                "title": title,
+                "filename": filename,
+                "base64_data": infographic_base64,
+                "infographic_type": infographic_type
+            }
+
+            print(f"   ✅ Infographic #{infographic_id} completed successfully!")
+            return result
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"   ✗ ERROR generating infographic #{infographic_id}: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg,
+                "infographic_id": infographic_id
+            }
+
+    # Generate all infographics in parallel using asyncio.gather
+    print(f"\n🚀 Launching {total_count} parallel image generations...")
+    print(f"⏱️  Start time: {datetime.now().strftime('%H:%M:%S')}")
+
+    tasks = [
+        generate_single(spec, idx)
+        for idx, spec in enumerate(infographics_specs)
+    ]
+
+    results = await asyncio.gather(*tasks)
+
+    print(f"⏱️  End time: {datetime.now().strftime('%H:%M:%S')}")
+
+    # Filter successful results
+    successful_results = [r for r in results if r.get("success")]
+    failed_results = [r for r in results if not r.get("success")]
+
+    success_count = len(successful_results)
+    failure_count = len(failed_results)
+
+    print(f"\n📈 GENERATION SUMMARY:")
+    print(f"   ✅ Successful: {success_count}/{total_count}")
+    print(f"   ✗ Failed: {failure_count}/{total_count}")
+
+    if failed_results:
+        print(f"\n⚠️  Failed infographics:")
+        for failed in failed_results:
+            print(f"   - Infographic #{failed.get('infographic_id')}: {failed.get('error')}")
+
+    # Save all successful results to state
+    tool_context.state["infographics_generated"] = successful_results
+    print(f"\n💾 Saved {success_count} infographics to state['infographics_generated']")
+
+    print("="*80)
+    print("BATCH INFOGRAPHIC GENERATION - COMPLETE")
+    print("="*80 + "\n")
+
+    # Create lightweight summary for tool response (NO base64 data)
+    # Base64 is already saved in state["infographics_generated"] for callback/HTML use
+    summary_results = [
+        {
+            "infographic_id": r.get("infographic_id"),
+            "title": r.get("title"),
+            "infographic_type": r.get("infographic_type"),
+            "filename": r.get("filename"),
+            # Explicitly NOT including base64_data to keep conversation history clean
+        }
+        for r in successful_results
+    ]
+
+    print(f"📤 Tool response size: ~{len(str(summary_results))} chars (metadata only, no base64)")
+
+    return {
+        "success": success_count > 0,
+        "total_requested": total_count,
+        "successfully_generated": success_count,
+        "failed": failure_count,
+        "summary": summary_results,  # Only metadata, not full results
+        "message": f"Generated {success_count}/{total_count} infographics successfully. Full data saved to state."
+    }
+
+
+# Create the batch FunctionTool
+generate_all_infographics_tool = FunctionTool(generate_all_infographics)
+
+
 # =============================================================================
 # CALLBACKS
 # =============================================================================
@@ -414,18 +676,31 @@ async def execute_chart_code_callback(callback_context):
     """
     import vertexai
 
+    print("\n" + "="*80)
+    print("CHART CODE EXECUTION CALLBACK - START")
+    print("="*80)
+
     state = callback_context.state
+
+    print(f"📋 Agent: {callback_context.agent_name}")
+    print(f"🔑 Invocation ID: {callback_context.invocation_id}")
 
     # Get current chart index (1-indexed)
     charts_generated = state.get("charts_generated", [])
     chart_index = len(charts_generated) + 1
 
+    print(f"📊 Processing chart #{chart_index}")
+    print(f"   Charts generated so far: {len(charts_generated)}")
+
     # Get the generated code
     chart_code = state.get("current_chart_code", "")
 
     if not chart_code:
-        print(f"Warning: No chart code for chart {chart_index}")
+        print(f"⚠️  WARNING: No chart code found in state for chart #{chart_index}")
+        print("="*80 + "\n")
         return
+
+    print(f"   ✓ Retrieved chart code from state ({len(chart_code)} chars)")
 
     # Get current metric info
     consolidated = state.get("consolidated_data")
@@ -436,6 +711,8 @@ async def execute_chart_code_callback(callback_context):
         elif hasattr(consolidated, "metrics"):
             metrics = consolidated.metrics
 
+    print(f"   Total metrics in plan: {len(metrics)}")
+
     current_metric = None
     if chart_index <= len(metrics):
         m = metrics[chart_index - 1]
@@ -444,16 +721,22 @@ async def execute_chart_code_callback(callback_context):
     metric_name = current_metric.get("metric_name", f"metric_{chart_index}") if current_metric else f"metric_{chart_index}"
     section = current_metric.get("section", "financials") if current_metric else "financials"
 
+    print(f"   Metric: {metric_name}")
+    print(f"   Section: {section}")
+
     # Extract Python code from markdown code blocks
     code_match = re.search(r"```python\s*(.*?)\s*```", chart_code, re.DOTALL)
     if code_match:
         code_to_execute = code_match.group(1)
+        print(f"   ✓ Extracted Python code from ```python block")
     else:
         code_match = re.search(r"```\s*(.*?)\s*```", chart_code, re.DOTALL)
         if code_match:
             code_to_execute = code_match.group(1)
+            print(f"   ✓ Extracted code from ``` block")
         else:
             code_to_execute = chart_code
+            print(f"   ⚠️  No code block found, using raw text")
 
     # Replace the generic filename with numbered filename
     code_to_execute = code_to_execute.replace(
@@ -461,20 +744,28 @@ async def execute_chart_code_callback(callback_context):
         f"chart_{chart_index}.png"
     )
 
-    print(f"Executing chart {chart_index} code ({len(code_to_execute)} chars)...")
+    print(f"\n🔧 Executing chart code in sandbox...")
+    print(f"   Code length: {len(code_to_execute)} chars")
 
     # Get sandbox configuration
     sandbox_name = os.environ.get("SANDBOX_RESOURCE_NAME")
     if not sandbox_name:
-        print(f"Error: SANDBOX_RESOURCE_NAME not set for chart {chart_index}")
+        print(f"✗ ERROR: SANDBOX_RESOURCE_NAME environment variable not set")
+        print("="*80 + "\n")
         return
+
+    print(f"   Sandbox: {sandbox_name}")
 
     try:
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
         location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
 
+        print(f"   Project: {project_id}, Location: {location}")
+
         vertexai.init(project=project_id, location=location)
         client = vertexai.Client(project=project_id, location=location)
+
+        print(f"   ⏳ Sending code to Agent Engine Sandbox...")
 
         # Execute the code in sandbox
         response = client.agent_engines.sandboxes.execute_code(
@@ -482,12 +773,15 @@ async def execute_chart_code_callback(callback_context):
             input_data={"code": code_to_execute}
         )
 
+        print(f"   ✓ Code execution completed")
+
         chart_saved = False
         chart_base64 = ""
         filename = f"chart_{chart_index}.png"
 
         if response and hasattr(response, "outputs"):
-            for output in response.outputs:
+            print(f"   Processing {len(response.outputs)} output(s)...")
+            for idx, output in enumerate(response.outputs):
                 # Look for generated image files
                 if output.metadata and output.metadata.attributes:
                     file_name = output.metadata.attributes.get("file_name")
@@ -501,8 +795,11 @@ async def execute_chart_code_callback(callback_context):
                         not file_name.startswith("code_execution_image_")
                     )
 
+                    print(f"      Output {idx+1}: {file_name} (is_chart={is_our_chart})")
+
                     if is_our_chart:
                         image_bytes = output.data
+                        print(f"      ✓ Found chart image: {file_name} ({len(image_bytes)} bytes)")
 
                         # Save as ADK artifact
                         image_artifact = types.Part.from_bytes(
@@ -513,7 +810,7 @@ async def execute_chart_code_callback(callback_context):
                             filename=filename,
                             artifact=image_artifact
                         )
-                        print(f"Saved chart artifact '{filename}' as version {version}")
+                        print(f"   ✓ Saved artifact '{filename}' (version {version})")
 
                         # Store base64 for HTML embedding
                         chart_base64 = base64.b64encode(image_bytes).decode('utf-8')
@@ -541,73 +838,132 @@ async def execute_chart_code_callback(callback_context):
                 "filename": filename,
             })
             state["charts_summary"] = charts_summary
-            print(f"Chart {chart_index} ({metric_name}) saved successfully")
+
+            print(f"\n✅ Chart #{chart_index} SUCCESS")
+            print(f"   Metric: {metric_name}")
+            print(f"   Filename: {filename}")
+            print(f"   Section: {section}")
+            print(f"   Total charts generated: {len(charts_generated)}")
         else:
-            print(f"Warning: Chart {chart_index} code executed but no image returned")
+            print(f"\n⚠️  WARNING: Code executed but no chart image found in outputs")
+
+        print("="*80 + "\n")
 
     except Exception as e:
-        print(f"Error executing chart {chart_index}: {e}")
+        print(f"\n✗ ERROR executing chart #{chart_index}: {str(e)}")
+        print("="*80 + "\n")
 
 
 async def initialize_charts_state_callback(callback_context):
-    """Initialize charts_generated and charts_summary lists after data consolidation.
+    """Initialize charts_generated, charts_summary, and infographics_summary lists after data consolidation.
 
-    This ensures the template variables exist in state before the chart generation loop starts.
+    This ensures the template variables exist in state before the chart/infographic generation starts.
     """
+    print("\n" + "="*80)
+    print("INITIALIZE CHARTS STATE CALLBACK - START")
+    print("="*80)
+
     state = callback_context.state
+
+    print(f"📋 Agent: {callback_context.agent_name}")
+    print(f"🔑 Invocation ID: {callback_context.invocation_id}")
 
     # Initialize charts_generated as empty list if not exists
     if "charts_generated" not in state:
         state["charts_generated"] = []
-        print("Initialized charts_generated = []")
+        print("✓ Initialized charts_generated = []")
+    else:
+        print(f"✓ charts_generated already exists (length: {len(state.get('charts_generated', []))})")
 
     # Initialize charts_summary (without base64) for LLM agents
     if "charts_summary" not in state:
         state["charts_summary"] = []
-        print("Initialized charts_summary = []")
+        print("✓ Initialized charts_summary = []")
+    else:
+        print(f"✓ charts_summary already exists (length: {len(state.get('charts_summary', []))})")
 
+    # Initialize infographics_summary (without base64) for LLM agents
+    if "infographics_summary" not in state:
+        state["infographics_summary"] = []
+        print("✓ Initialized infographics_summary = []")
+    else:
+        print(f"✓ infographics_summary already exists (length: {len(state.get('infographics_summary', []))})")
 
-async def initialize_infographics_state_callback(callback_context):
-    """Initialize infographics_generated list after chart generation.
-
-    This ensures the infographics state is ready before parallel generation.
-    """
-    state = callback_context.state
-
-    # Initialize infographics_generated as empty list if not exists
-    if "infographics_generated" not in state:
-        state["infographics_generated"] = []
-        print("Initialized infographics_generated = []")
-
-    # Also create a summary of charts (without base64) for later agents
-    charts_generated = state.get("charts_generated", [])
-    charts_summary = []
-    for chart in charts_generated:
-        charts_summary.append({
-            "chart_index": chart.get("chart_index"),
-            "metric_name": chart.get("metric_name"),
-            "section": chart.get("section"),
-            "filename": chart.get("filename"),
-        })
-    state["charts_summary"] = charts_summary
-    print(f"Created charts_summary with {len(charts_summary)} items (no base64)")
+    print("="*80 + "\n")
 
 
 async def create_infographics_summary_callback(callback_context):
-    """Create infographics_summary without base64 data for later agents."""
-    state = callback_context.state
+    """Create infographics_summary without base64 data for later agents.
 
-    infographics_generated = state.get("infographics_generated", [])
-    infographics_summary = []
-    for infographic in infographics_generated:
-        infographics_summary.append({
-            "infographic_id": infographic.get("infographic_id"),
-            "title": infographic.get("title"),
-            "infographic_type": infographic.get("infographic_type"),
-            "filename": infographic.get("filename"),
-        })
-    state["infographics_summary"] = infographics_summary
-    print(f"Created infographics_summary with {len(infographics_summary)} items (no base64)")
+    This runs as after_agent_callback on infographic_generator, ensuring the summary
+    exists in session state before analysis_writer tries to use it in its instruction template.
+    """
+    try:
+        print("\n" + "="*80)
+        print("CREATE INFOGRAPHICS SUMMARY CALLBACK - START")
+        print("="*80)
+
+        state = callback_context.state
+
+        print(f"📋 Agent: {callback_context.agent_name}")
+        print(f"🔑 Invocation ID: {callback_context.invocation_id}")
+
+        infographics_generated = state.get("infographics_generated", [])
+        print(f"🔍 DEBUG: infographics_generated type: {type(infographics_generated)}")
+        print(f"🔍 DEBUG: infographics_generated length: {len(infographics_generated) if isinstance(infographics_generated, list) else 'N/A'}")
+
+        print(f"📊 Found {len(infographics_generated)} generated infographics in state")
+
+        # Calculate total base64 size for debugging
+        total_base64_size = 0
+        for infographic in infographics_generated:
+            base64_data = infographic.get("base64_data", "")
+            total_base64_size += len(base64_data)
+
+        print(f"⚠️  Total base64 data size: {total_base64_size:,} chars (~{total_base64_size / (1024*1024):.2f} MB)")
+        print(f"   This would exceed LLM context - creating summary without base64...")
+
+        infographics_summary = []
+        for infographic in infographics_generated:
+            summary_item = {
+                "infographic_id": infographic.get("infographic_id"),
+                "title": infographic.get("title"),
+                "infographic_type": infographic.get("infographic_type"),
+                "filename": infographic.get("filename"),
+            }
+            infographics_summary.append(summary_item)
+            print(f"   - Infographic {summary_item['infographic_id']}: {summary_item['title']} ({summary_item['filename']})")
+
+        state["infographics_summary"] = infographics_summary
+
+        # Debug: Check size of all state variables that will be passed to analysis_writer
+        print(f"\n📏 STATE SIZE CHECK (for analysis_writer):")
+        print(f"   research_plan: {len(str(state.get('research_plan', '')))} chars")
+        print(f"   consolidated_data: {len(str(state.get('consolidated_data', '')))} chars")
+        print(f"   charts_summary: {len(str(state.get('charts_summary', '')))} chars")
+        print(f"   infographics_summary: {len(str(infographics_summary))} chars")
+
+        total_state_size = (
+            len(str(state.get('research_plan', ''))) +
+            len(str(state.get('consolidated_data', ''))) +
+            len(str(state.get('charts_summary', ''))) +
+            len(str(infographics_summary))
+        )
+        print(f"   TOTAL (without base64): {total_state_size:,} chars (~{total_state_size / (1024*1024):.2f} MB)")
+
+        if total_state_size > 500_000:  # ~500KB
+            print(f"   ⚠️  WARNING: State size is large - may cause LLM errors")
+
+        print(f"\n✅ Created infographics_summary with {len(infographics_summary)} items (no base64)")
+        print("="*80 + "\n")
+
+    except Exception as e:
+        print(f"\n✗ ERROR in create_infographics_summary_callback: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print("="*80 + "\n")
+        # Create empty summary to prevent downstream errors
+        callback_context.state["infographics_summary"] = []
 
 
 async def save_html_report_callback(callback_context):
@@ -619,26 +975,44 @@ async def save_html_report_callback(callback_context):
     3. Injects all infographic base64 images (INFOGRAPHIC_1_PLACEHOLDER, etc.)
     4. Saves as downloadable artifact
     """
+    print("\n" + "="*80)
+    print("SAVE HTML REPORT CALLBACK - START")
+    print("="*80)
+
     state = callback_context.state
+
+    print(f"📋 Agent: {callback_context.agent_name}")
+    print(f"🔑 Invocation ID: {callback_context.invocation_id}")
+
     html_report = state.get("html_report", "")
+    print(f"📄 HTML report length: {len(html_report)} chars")
 
     if not html_report:
+        print("✗ ERROR: No HTML report was generated")
         state["report_result"] = "Error: No HTML report was generated"
+        print("="*80 + "\n")
         return
 
     # Extract HTML from code blocks if wrapped
+    print(f"📝 Extracting HTML content from report...")
     html_match = re.search(r"```html\s*(.*?)\s*```", html_report, re.DOTALL)
     if html_match:
         html_content = html_match.group(1)
+        print(f"   ✓ Extracted from ```html``` code block")
     else:
         html_match = re.search(r"```\s*(.*?)\s*```", html_report, re.DOTALL)
         if html_match:
             html_content = html_match.group(1)
+            print(f"   ✓ Extracted from ``` code block")
         else:
             html_content = html_report
+            print(f"   ✓ Using raw HTML (no code blocks)")
+
+    print(f"📏 Extracted HTML length: {len(html_content)} chars")
 
     # Inject all charts
     charts_generated = state.get("charts_generated", [])
+    print(f"\n🖼️  Injecting {len(charts_generated)} charts...")
     for chart in charts_generated:
         chart_index = chart.get("chart_index", 0)
         base64_data = chart.get("base64_data", "")
@@ -653,6 +1027,7 @@ async def save_html_report_callback(callback_context):
 
     # Inject all infographics
     infographics_generated = state.get("infographics_generated", [])
+    print(f"\n🎨 Injecting {len(infographics_generated)} infographics...")
     for infographic in infographics_generated:
         infographic_id = infographic.get("infographic_id", 0)
         base64_data = infographic.get("base64_data", "")
@@ -663,26 +1038,33 @@ async def save_html_report_callback(callback_context):
                 placeholder,
                 f"data:image/png;base64,{base64_data}"
             )
-            print(f"Injected infographic {infographic_id} into HTML")
+            print(f"   ✓ Injected infographic {infographic_id} into HTML")
 
-    print(f"Saving equity report HTML ({len(html_content)} chars) with {len(charts_generated)} charts and {len(infographics_generated)} infographics...")
+    print(f"\n💾 Saving equity report HTML ({len(html_content)} chars) with {len(charts_generated)} charts and {len(infographics_generated)} infographics...")
 
     try:
         html_artifact = types.Part.from_bytes(
             data=html_content.encode('utf-8'),
             mime_type="text/html"
         )
+        print(f"   📦 Created HTML artifact ({len(html_content.encode('utf-8'))} bytes)")
+
         version = await callback_context.save_artifact(
             filename="equity_report.html",
             artifact=html_artifact
         )
-        print(f"Saved equity_report.html as version {version}")
+        print(f"   ✅ Saved equity_report.html as version {version}")
         state["report_result"] = f"Report saved: equity_report.html (version {version})"
+
+        print("="*80 + "\n")
 
     except Exception as e:
         error_msg = f"Failed to save HTML report: {str(e)}"
-        print(error_msg)
+        print(f"   ✗ ERROR: {error_msg}")
+        import traceback
+        traceback.print_exc()
         state["report_result"] = error_msg
+        print("="*80 + "\n")
 
 
 # =============================================================================
@@ -856,6 +1238,35 @@ HTML_TEMPLATE = '''
             font-size: 1.1em;
             color: #555;
             margin-bottom: 15px;
+        }}
+
+        /* Visual Contextualization - Setup → Visual → Interpretation */
+        .visual-context {{
+            margin: 30px 0;
+            padding: 20px;
+            background: #fafafa;
+            border-radius: 12px;
+            border-left: 4px solid #1a237e;
+        }}
+        .visual-context .setup-text {{
+            color: #333;
+            font-size: 1.05em;
+            line-height: 1.7;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background: white;
+            border-radius: 8px;
+            font-style: italic;
+        }}
+        .visual-context .interpretation-text {{
+            color: #1a237e;
+            font-size: 1.05em;
+            line-height: 1.7;
+            margin-top: 20px;
+            padding: 15px 20px;
+            background: #e8eaf6;
+            border-radius: 8px;
+            font-weight: 500;
         }}
 
         /* Tables */
@@ -1429,9 +1840,9 @@ chart_generation_loop = LoopAgent(
 infographic_planner = LlmAgent(
     model=MODEL,
     name="infographic_planner",
-    description="Plans 3 AI-generated infographics based on company research data.",
+    description="Plans 2-5 AI-generated infographics based on company research data and query complexity.",
     instruction="""
-You are a visual communications specialist. Plan 3 infographics to enhance the equity research report.
+You are a visual communications specialist for a major investment bank. Plan infographics to enhance the equity research report.
 
 **Inputs:**
 - Research Plan: {research_plan}
@@ -1439,7 +1850,12 @@ You are a visual communications specialist. Plan 3 infographics to enhance the e
 - Company Overview from news: {news_data}
 
 **Your Task:**
-Create exactly 3 infographic specifications:
+Create 2-5 infographic specifications based on query complexity and available data:
+- **Minimum 2**: Business Model + one other (Competitive OR Growth)
+- **Typical 3**: Business Model + Competitive Landscape + Growth Drivers (most common)
+- **Maximum 5**: Add Market Position + Risk Landscape for comprehensive analyses
+
+**Common Infographic Types:**
 
 1. **Business Model Infographic** (infographic_id: 1):
    - Type: "business_model"
@@ -1467,119 +1883,70 @@ Create exactly 3 infographic specifications:
 - visual_style: Description of the visual approach
 - prompt: DETAILED prompt for image generation (be very specific about layout, colors, text to include)
 
+**CRITICAL Visual Requirements (MUST FOLLOW):**
+- **Background**: ALWAYS use clean WHITE background (#FFFFFF or #F5F5F5)
+- **Color Palette**: Professional corporate colors - Blues (#1a237e, #0d47a1, #2196f3), Greens (#2e7d32, #4caf50)
+- **NO dark themes, NO black backgrounds, NO dark mode**
+- **Typography**: Modern sans-serif fonts (Arial, Helvetica, Open Sans)
+- **Style**: Minimalist, data-driven, high contrast for readability
+- **Format**: Square (1:1) at 2K resolution - already handled by system
+
 **Prompt Guidelines:**
 - Be VERY specific about what to show visually
 - Include actual company name and data from consolidated_data
 - Describe the layout: icons, arrows, boxes, text placement
-- Specify colors: use professional corporate colors
-- Request: "Create a professional infographic..."
+- **CRITICAL**: EVERY prompt MUST explicitly specify: "Use a clean WHITE background (#FFFFFF), professional corporate colors (blue and green tones), modern sans-serif typography, and minimalist design"
 - Include key statistics and numbers from the data
+- Request high contrast between text and background for readability
 
 **Example Prompt:**
-"Create a professional business infographic for [Company Name]. Show their business model with:
-- Header: 'How [Company] Makes Money'
-- Three main revenue streams as colored boxes with icons: [Stream 1] ($X billion), [Stream 2] ($Y billion), [Stream 3] ($Z billion)
-- Use blue and green corporate colors
-- Include company logo placeholder
-- Clean, modern design with arrows showing money flow
-- Professional font, data-driven visualization"
+"Create a professional business infographic for [Company Name] on a clean WHITE background (#FFFFFF). Show their business model with:
+- Header: 'How [Company] Makes Money' in dark blue (#1a237e)
+- Three main revenue streams as light blue boxes (#2196f3) with dark text: [Stream 1] ($X billion), [Stream 2] ($Y billion), [Stream 3] ($Z billion)
+- Use professional blue (#1a237e, #0d47a1) and green (#2e7d32) corporate colors
+- Modern sans-serif font (Arial/Helvetica)
+- Clean, minimalist design with dark blue arrows showing money flow
+- High contrast, data-driven visualization
+- White background throughout"
 
-**Output:** An InfographicPlan object with exactly 3 infographics.
+**Output:** An InfographicPlan object with 2-5 infographics (decide based on query complexity).
 """,
     output_schema=InfographicPlan,
     output_key="infographic_plan",
-    after_agent_callback=initialize_infographics_state_callback,
+    # No callback needed - batch tool handles state initialization
 )
 
 
-# Three parallel infographic generators - each generates one specific infographic
-infographic_generator_1 = LlmAgent(
+# Single batch infographic generator - dynamically handles 2-5 infographics
+infographic_generator = LlmAgent(
     model=MODEL,
-    name="infographic_generator_1",
-    description="Generates infographic #1 (Business Model) using the generate_infographic tool.",
+    name="infographic_generator",
+    description="Generates all planned infographics (2-5) in parallel using batch generation tool.",
     instruction="""
-You are an infographic generator. Generate infographic #1: Business Model.
+You are an infographic batch generator for professional equity research reports.
 
 **Input:**
-- Infographic Plan: {infographic_plan}
+- Infographic Plan: {infographic_plan} (contains 2-5 infographic specifications)
 
 **Your Task:**
-1. Find infographic with infographic_id=1 in the plan
-2. Use the generate_infographic tool with:
-   - prompt: The detailed prompt from the plan (infographic.prompt)
-   - infographic_id: 1
-   - title: The title from the plan
+Call the generate_all_infographics tool ONCE with the entire infographic plan.
 
-Call the tool ONCE to generate the infographic.
+The tool will:
+1. Extract all infographics from the plan (2, 3, 4, or 5 infographics)
+2. Generate ALL of them in parallel using asyncio.gather()
+3. Save each as an artifact (infographic_1.png, infographic_2.png, etc.)
+4. Store results in state["infographics_generated"]
 
-**Output:** Confirm the infographic was generated successfully.
+**CRITICAL INSTRUCTIONS:**
+- Call the tool EXACTLY ONCE
+- Do NOT retry or make multiple calls
+- The tool handles all infographics automatically
+- Pass the ENTIRE infographic_plan as parameter
+
+**Output:** Confirmation message with count of successfully generated infographics.
 """,
-    tools=[generate_infographic_tool],
-    output_key="infographic_1_result",
-)
-
-
-infographic_generator_2 = LlmAgent(
-    model=MODEL,
-    name="infographic_generator_2",
-    description="Generates infographic #2 (Competitive Landscape) using the generate_infographic tool.",
-    instruction="""
-You are an infographic generator. Generate infographic #2: Competitive Landscape.
-
-**Input:**
-- Infographic Plan: {infographic_plan}
-
-**Your Task:**
-1. Find infographic with infographic_id=2 in the plan
-2. Use the generate_infographic tool with:
-   - prompt: The detailed prompt from the plan (infographic.prompt)
-   - infographic_id: 2
-   - title: The title from the plan
-
-Call the tool ONCE to generate the infographic.
-
-**Output:** Confirm the infographic was generated successfully.
-""",
-    tools=[generate_infographic_tool],
-    output_key="infographic_2_result",
-)
-
-
-infographic_generator_3 = LlmAgent(
-    model=MODEL,
-    name="infographic_generator_3",
-    description="Generates infographic #3 (Growth Drivers) using the generate_infographic tool.",
-    instruction="""
-You are an infographic generator. Generate infographic #3: Growth Drivers.
-
-**Input:**
-- Infographic Plan: {infographic_plan}
-
-**Your Task:**
-1. Find infographic with infographic_id=3 in the plan
-2. Use the generate_infographic tool with:
-   - prompt: The detailed prompt from the plan (infographic.prompt)
-   - infographic_id: 3
-   - title: The title from the plan
-
-Call the tool ONCE to generate the infographic.
-
-**Output:** Confirm the infographic was generated successfully.
-""",
-    tools=[generate_infographic_tool],
-    output_key="infographic_3_result",
-)
-
-
-# Combine into ParallelAgent for concurrent generation
-parallel_infographic_generators = ParallelAgent(
-    name="parallel_infographic_generators",
-    description="Runs 3 infographic generators concurrently.",
-    sub_agents=[
-        infographic_generator_1,
-        infographic_generator_2,
-        infographic_generator_3,
-    ],
+    tools=[generate_all_infographics_tool],
+    after_agent_callback=create_infographics_summary_callback,  # Create summary without base64 after generation
 )
 
 
@@ -1587,63 +1954,104 @@ parallel_infographic_generators = ParallelAgent(
 analysis_writer = LlmAgent(
     model=MODEL,
     name="analysis_writer",
-    description="Writes narrative analysis sections for the equity research report.",
-    before_agent_callback=create_infographics_summary_callback,  # Create summary without base64
+    description="Writes narrative analysis with visual contextualization using Setup→Visual→Interpretation pattern.",
     instruction="""
-You are a senior equity research analyst. Write professional analysis sections.
+You are a senior equity research analyst at a major investment bank (Morgan Stanley / Goldman Sachs caliber).
 
-**Inputs:**
+**YOUR TASK**: Write professional analysis using the "Setup → Visual → Interpretation" pattern for ALL visuals.
+
+**INPUTS**:
 - Research Plan: {research_plan}
 - Consolidated Data: {consolidated_data}
+- Charts Summary: {charts_summary} (list of generated charts with section assignments)
+- Infographics Summary: {infographics_summary} (list of generated infographics)
 
-NOTE: Multiple charts and infographics have been generated based on the consolidated data.
-Reference the charts in your analysis where appropriate.
+**CRITICAL PATTERN - Setup → Visual → Interpretation**:
 
-**Your Task:**
-Write the following sections in a professional, analytical tone:
+For EVERY visual (chart, infographic), you MUST provide:
+1. **Setup Text** (BEFORE visual): 1-2 sentences explaining:
+   - What metric/concept this visual shows
+   - Why it matters to the investment thesis
+   - What time period/comparison we're examining
 
-1. **executive_summary** (2-3 paragraphs):
-   - Investment thesis in first sentence
-   - Key financial highlights
-   - Clear buy/hold/sell recommendation with target price if data supports it
+2. **[Visual appears here in HTML]**
 
-2. **company_overview** (2-3 paragraphs):
-   - What the company does
-   - Business model and segments
-   - Competitive position and market share
+3. **Interpretation Text** (AFTER visual): 1-2 sentences explaining:
+   - What the visual reveals (trend, insight, conclusion)
+   - Implications for valuation/recommendation
+   - How this supports/contradicts the investment thesis
 
-3. **financial_analysis** (2-3 paragraphs):
-   - Revenue and profit trends
-   - Margin analysis
-   - EPS growth trajectory
-   - Reference the charts that show this data
+**EXAMPLE - Revenue Chart**:
 
-4. **valuation_analysis** (2-3 paragraphs):
-   - Current valuation multiples
-   - Comparison to historical averages
-   - Fair value assessment
+Setup: "Microsoft's revenue trajectory over the past five fiscal years provides critical insight into the company's ability to maintain market leadership during the cloud transition. The chart below tracks total annual revenue from FY2020 through FY2025."
 
-5. **growth_outlook** (2 paragraphs):
-   - Growth catalysts and opportunities
-   - Competitive advantages (moat)
+[CHART APPEARS]
 
-6. **risks_concerns** (list format):
-   - 3-5 key risk factors
-   - Industry-specific risks
-   - Company-specific concerns
+Interpretation: "The consistent 14-15% compound annual growth rate, with FY2025 revenue reaching $281.7B, demonstrates Microsoft's successful pivot to recurring subscription revenue. This growth sustainability justifies a premium valuation multiple relative to peers."
 
-7. **investment_recommendation** (2 paragraphs):
-   - Clear Buy/Hold/Sell rating
-   - Price target rationale
-   - Key takeaways for investors
+**YOUR OUTPUT STRUCTURE**:
 
-**Style Guidelines:**
-- Use professional, objective language
-- Support claims with data from consolidated_data
-- Be balanced - acknowledge both positives and risks
-- Format as clean HTML paragraphs (use <p> tags)
+For each major section (Company Overview, Financial, Valuation, Growth), provide:
 
-**Output:** An AnalysisSections object with all sections written.
+1. **Section Intro**: 1 paragraph setting up the section's analysis
+2. **Visual Contexts**: For each chart/infographic in this section, create a VisualContext with:
+   - visual_id: "chart_1", "chart_2", "infographic_1", etc.
+   - visual_type: "chart", "infographic", or "table"
+   - setup_text: The setup paragraph (1-2 sentences)
+   - interpretation_text: The interpretation paragraph (1-2 sentences)
+3. **Section Conclusion**: 1 paragraph synthesizing insights
+
+**MAPPING VISUALS TO SECTIONS**:
+
+From charts_summary and infographics_summary, assign visuals to sections based on their "section" field:
+
+- **Company Overview** (company_overview_visual_contexts):
+  - Business model infographics (type: "business_model")
+  - Competitive landscape infographics (type: "competitive_landscape")
+  - Market position infographics (if any)
+
+- **Financial Performance** (financial_visual_contexts):
+  - Charts with section="financials" (revenue, profit, margins, EPS)
+  - Create visual context for EACH chart in order
+
+- **Valuation Analysis** (valuation_visual_contexts):
+  - Charts with section="valuation" (P/E, EV/EBITDA, price targets)
+
+- **Growth Outlook** (growth_visual_contexts):
+  - Charts with section="growth" (growth rates, market expansion)
+  - Growth driver infographics (type: "growth_drivers")
+  - Risk landscape infographics (if any) can go here or in risks section
+
+**STYLE GUIDELINES**:
+- Professional, objective, analytical tone (Morgan Stanley quality)
+- Data-driven: cite specific numbers from consolidated_data
+- Balanced: acknowledge both strengths and risks
+- Investment-focused: always link back to buy/hold/sell thesis
+- Setup text: Forward-looking ("The chart below shows...")
+- Interpretation text: Analytical ("This trend indicates...")
+
+**EXECUTIVE SUMMARY** (NO visual contexts, just text):
+Write 2-3 paragraphs with:
+- First sentence: Investment thesis (Buy/Hold/Sell with target price)
+- Key financial highlights and growth trajectory
+- Primary catalysts and risks
+- Valuation assessment
+
+**RISKS & CONCERNS** (NO visual contexts, just text):
+Write comprehensive risk analysis with:
+- 3-5 key risk factors as paragraphs or bullet points
+- Industry-specific headwinds
+- Company-specific vulnerabilities
+- Format as HTML paragraphs or list items
+
+**INVESTMENT RECOMMENDATION** (NO visual contexts, just text):
+Write 2 paragraphs with:
+- Clear Buy/Hold/Sell rating
+- Price target with 12-month horizon
+- Key reasons supporting recommendation
+- Key takeaways for investors
+
+**OUTPUT**: AnalysisSections object with ALL sections and visual contexts properly structured.
 """,
     output_schema=AnalysisSections,
     output_key="analysis_sections",
@@ -1654,116 +2062,102 @@ Write the following sections in a professional, analytical tone:
 html_report_generator = LlmAgent(
     model=MODEL,
     name="html_report_generator",
-    description="Generates the final multi-page HTML equity research report with charts, infographics, and data tables.",
+    description="Generates professional equity research report HTML with Setup→Visual→Interpretation contextualization.",
     instruction=f"""
-You are an HTML report generator. Create a professional equity research report.
+You are generating a professional equity research report with visual contextualization.
 
-**Inputs:**
+**INPUTS:**
 - Research Plan: {{research_plan}}
 - Consolidated Data: {{consolidated_data}}
-- Charts Summary: {{charts_summary}}
-- Infographics Summary: {{infographics_summary}}
-- Analysis Sections: {{analysis_sections}}
-
-NOTE: The actual image data will be injected by a callback. You just need to use the correct placeholders.
+- Charts Summary: {{charts_summary}} (list of generated charts)
+- Infographics Summary: {{infographics_summary}} (list of generated infographics)
+- Analysis Sections: {{analysis_sections}} (NOW INCLUDES VISUAL CONTEXTS)
 
 **Template:**
 {HTML_TEMPLATE}
 
-**Your Task:**
-Generate a complete HTML document by replacing ALL placeholders:
+**CRITICAL NEW REQUIREMENT - Visual Contextualization**:
 
-1. **Header Placeholders:**
-   - COMPANY_NAME_PLACEHOLDER: Company name from research_plan
-   - TICKER_PLACEHOLDER: Ticker from research_plan
-   - EXCHANGE_PLACEHOLDER: Exchange from research_plan
-   - DATE_PLACEHOLDER: {CURRENT_DATE}
-   - SECTOR_PLACEHOLDER: Determine from company info
-   - RATING_PLACEHOLDER: Buy/Hold/Sell from analysis
-   - RATING_CLASS_PLACEHOLDER: "rating-buy", "rating-hold", or "rating-sell"
+For each section (Company Overview, Financial, Valuation, Growth), you MUST:
 
-2. **Content Placeholders:**
-   - EXECUTIVE_SUMMARY_PLACEHOLDER: From analysis_sections.executive_summary (wrap in <p> tags)
-   - COMPANY_OVERVIEW_PLACEHOLDER: From analysis_sections.company_overview
-   - FINANCIAL_ANALYSIS_PLACEHOLDER: From analysis_sections.financial_analysis
-   - VALUATION_ANALYSIS_PLACEHOLDER: From analysis_sections.valuation_analysis
-   - GROWTH_OUTLOOK_PLACEHOLDER: From analysis_sections.growth_outlook
-   - RISKS_INTRO_PLACEHOLDER: Brief intro to risks
-   - RISKS_LIST_PLACEHOLDER: Create <li> items from analysis_sections.risks_concerns
-   - RECOMMENDATION_PLACEHOLDER: From analysis_sections.investment_recommendation
+1. Get the intro/conclusion paragraphs from analysis_sections
+2. For each visual in that section:
+   - Find the matching VisualContext from analysis_sections
+   - Create a visual-context container with:
+     - setup-text paragraph (from visual_context.setup_text)
+     - The visual itself (chart or infographic)
+     - interpretation-text paragraph (from visual_context.interpretation_text)
 
-3. **Metrics Placeholder:**
-   - KEY_METRICS_PLACEHOLDER: Create 4-6 metric cards showing key stats:
-     ```html
-     <div class="metric-card">
-         <div class="value">$350B</div>
-         <div class="label">Revenue (TTM)</div>
-     </div>
-     ```
+**EXAMPLE - Financial Performance Section**:
 
-4. **Chart Placeholders:**
-   - For each chart in charts_summary, create a chart container:
-     ```html
-     <div class="chart-container">
-         <div class="chart-title">Chart Title</div>
-         <img src="CHART_N_PLACEHOLDER" alt="Chart description">
-     </div>
-     ```
-   - Use CHART_1_PLACEHOLDER, CHART_2_PLACEHOLDER, etc. (the callback will inject base64)
-   - Group charts by section (FINANCIAL_CHARTS_PLACEHOLDER, VALUATION_CHARTS_PLACEHOLDER, GROWTH_CHARTS_PLACEHOLDER)
+```html
+<div class="section">
+    <h2>Financial Performance</h2>
+    {{{{ analysis_sections.financial_intro }}}}
 
-5. **Infographic Placeholders (NEW):**
-   - INFOGRAPHICS_PLACEHOLDER: Create infographic cards for each item in infographics_summary:
-     ```html
-     <div class="infographic-card">
-         <img src="INFOGRAPHIC_N_PLACEHOLDER" alt="Infographic title">
-         <div class="infographic-title">Infographic Title</div>
-     </div>
-     ```
-   - Use INFOGRAPHIC_1_PLACEHOLDER, INFOGRAPHIC_2_PLACEHOLDER, INFOGRAPHIC_3_PLACEHOLDER
-   - The callback will inject the actual base64 images
+    <!-- For each chart in financial section -->
+    <div class="visual-context">
+        <p class="setup-text">{{{{ visual_context.setup_text }}}}</p>
+        <div class="chart-container">
+            <div class="chart-title">Annual Revenue (FY2020-FY2025)</div>
+            <img src="CHART_1_PLACEHOLDER" alt="Revenue Trend">
+        </div>
+        <p class="interpretation-text">{{{{ visual_context.interpretation_text }}}}</p>
+    </div>
 
-6. **Data Tables Placeholder (NEW):**
-   - DATA_TABLES_PLACEHOLDER: Create data tables from consolidated_data.metrics
-   - For each metric, create a table with the data points:
-     ```html
-     <div class="data-section">
-         <h3>Revenue Data</h3>
-         <div class="data-table-wrapper">
-             <table class="data-table">
-                 <thead>
-                     <tr>
-                         <th>Period</th>
-                         <th>Value</th>
-                         <th>Unit</th>
-                     </tr>
-                 </thead>
-                 <tbody>
-                     <tr>
-                         <td>2023</td>
-                         <td class="number">$350.0B</td>
-                         <td>USD Billions</td>
-                     </tr>
-                     <!-- More rows... -->
-                 </tbody>
-             </table>
-         </div>
-     </div>
-     ```
-   - Include ALL metrics data from consolidated_data.metrics
-   - Use number formatting for values
+    <!-- Repeat for each financial chart -->
 
-**CRITICAL - Image Placeholders:**
-- For chart 1: <img src="CHART_1_PLACEHOLDER" alt="...">
-- For chart 2: <img src="CHART_2_PLACEHOLDER" alt="...">
-- For infographic 1: <img src="INFOGRAPHIC_1_PLACEHOLDER" alt="...">
-- For infographic 2: <img src="INFOGRAPHIC_2_PLACEHOLDER" alt="...">
-- For infographic 3: <img src="INFOGRAPHIC_3_PLACEHOLDER" alt="...">
-- Do NOT use base64 directly - use the PLACEHOLDER format
+    {{{{ analysis_sections.financial_conclusion }}}}
+</div>
+```
 
-**Output:**
-Return the COMPLETE HTML document. No markdown code blocks.
-The HTML must be valid and self-contained.
+**MAPPING VISUALS TO SECTIONS**:
+
+**Company Overview Section:**
+- Use analysis_sections.company_overview_intro
+- For each context in analysis_sections.company_overview_visual_contexts:
+  - Create visual-context container with setup/interpretation
+  - Use infographic placeholders for infographics in this section
+- Use analysis_sections.company_overview_conclusion
+
+**Financial Performance Section:**
+- Use analysis_sections.financial_intro
+- For each context in analysis_sections.financial_visual_contexts:
+  - Match visual_id to chart from charts_summary
+  - Create visual-context with setup + chart + interpretation
+- Use analysis_sections.financial_conclusion
+
+**Valuation Analysis Section:**
+- Use analysis_sections.valuation_intro
+- For each context in analysis_sections.valuation_visual_contexts:
+  - Create contextualized chart containers
+- Use analysis_sections.valuation_conclusion
+
+**Growth Outlook Section:**
+- Use analysis_sections.growth_intro
+- For each context in analysis_sections.growth_visual_contexts:
+  - Include both charts AND growth-related infographics
+- Use analysis_sections.growth_conclusion
+
+**STANDARD PLACEHOLDERS (unchanged):**
+
+1. **Header:** COMPANY_NAME_PLACEHOLDER, TICKER_PLACEHOLDER, EXCHANGE_PLACEHOLDER, DATE_PLACEHOLDER: {CURRENT_DATE}, SECTOR_PLACEHOLDER, RATING_PLACEHOLDER, RATING_CLASS_PLACEHOLDER
+
+2. **Executive Summary:** analysis_sections.executive_summary (wrap in <p> tags)
+
+3. **Key Metrics:** KEY_METRICS_PLACEHOLDER - create 4-6 metric cards from consolidated_data
+
+4. **Risks & Concerns:** analysis_sections.risks_concerns (format as <li> items or paragraphs)
+
+5. **Investment Recommendation:** analysis_sections.investment_recommendation (wrap in <p> tags)
+
+6. **Data Tables (Appendix):** DATA_TABLES_PLACEHOLDER - create tables from consolidated_data.metrics
+
+**IMAGE PLACEHOLDERS** (callback injects base64):
+- Charts: CHART_1_PLACEHOLDER, CHART_2_PLACEHOLDER, etc.
+- Infographics: INFOGRAPHIC_1_PLACEHOLDER, INFOGRAPHIC_2_PLACEHOLDER, etc. (up to 5)
+
+**OUTPUT**: Complete HTML document with ALL visuals properly contextualized. No markdown blocks.
 """,
     output_key="html_report",
     after_agent_callback=save_html_report_callback,
@@ -1783,28 +2177,30 @@ equity_research_pipeline = SequentialAgent(
     2. Parallel Data Gatherers - 4 concurrent fetchers (financial, valuation, market, news)
     3. Data Consolidator - Merges data into structured format
     4. Chart Generation Loop - Creates multiple charts (one per metric)
-    5. Infographic Planner - Plans 3 AI-generated infographics
-    6. Parallel Infographic Generators - Generates 3 infographics concurrently
+    5. Infographic Planner - Plans 2-5 AI-generated infographics (dynamic based on query complexity)
+    6. Infographic Generator - Batch generates all infographics in parallel (asyncio.gather)
     7. Analysis Writer - Writes professional narrative sections
     8. HTML Report Generator - Creates multi-page report with charts, infographics, and data tables
 
     Key Features:
     - ParallelAgent for concurrent data fetching (4x faster)
     - LoopAgent for generating multiple charts (5-10 per report)
+    - Dynamic infographic count (2-5) based on query complexity
+    - Batch parallel infographic generation (asyncio.gather for true parallelism)
     - Callback-based code execution (guaranteed single execution per chart)
-    - AI-generated infographics using Gemini 3 Pro Image model
-    - Professional multi-section HTML report with data tables
+    - AI-generated infographics using Gemini 3 Pro Image model (1:1, 2K, white theme)
+    - Professional multi-section HTML report with Setup→Visual→Interpretation pattern
 
-    Final Output: equity_report.html + chart_1.png, chart_2.png, ... + infographic_1.png, infographic_2.png, infographic_3.png
+    Final Output: equity_report.html + chart_1.png, chart_2.png, ... + infographic_1.png to infographic_5.png
     """,
     sub_agents=[
         research_planner,               # 1. Plan metrics
         parallel_data_gatherers,        # 2. Fetch data (parallel)
         data_consolidator,              # 3. Merge & structure
         chart_generation_loop,          # 4. Generate all charts
-        infographic_planner,            # 5. Plan 3 infographics
-        parallel_infographic_generators, # 6. Generate infographics (parallel)
-        analysis_writer,                # 7. Write analysis
+        infographic_planner,            # 5. Plan 2-5 infographics (dynamic)
+        infographic_generator,          # 6. Batch generate all infographics (parallel)
+        analysis_writer,                # 7. Write analysis with visual context
         html_report_generator,          # 8. Create HTML report
     ],
 )
