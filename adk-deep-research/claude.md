@@ -18,31 +18,27 @@ The deep research agent transforms user queries into structured research plans, 
 ## Directory Structure
 
 ```
-adk-deep-research/
-├── claude.md                    # This file - your guiding light
-├── .env                         # Environment variables (GCP project, sandbox IDs)
-├── app/                         # MAIN AGENT - production version
-│   ├── agent.py                 # Core agent logic
-│   ├── config.py                # Configuration
-│   └── __init__.py
-├── code_execution_01/           # EXPERIMENT 001: Financial Data Visualization
-│   ├── agent.py                 # SequentialAgent with 4 sub-agents
-│   ├── config.py                # Agent configuration
-│   ├── manage_sandbox.py        # Sandbox lifecycle management CLI
-│   ├── requirements.txt         # Python dependencies
-│   ├── README.md                # Experiment documentation (SUCCESS)
-│   └── __init__.py
-├── experiments/                 # Future experimental work
-│   ├── experiment-XXX-NAME/     # Each experiment gets its own folder
-│   │   ├── README.md            # Experiment goals, approach, results
-│   │   ├── app/                 # Modified agent code
-│   │   └── notes.md             # Ongoing observations
-│   └── ...
-└── docs/                        # Shared documentation
-    ├── architecture.md          # System architecture overview
-    ├── integration-guide.md     # How to integrate experiments
-    └── lessons-learned.md       # Key insights from experiments
+build-with-adk/
+├── adk-deep-research/           # MAIN PROJECT - Deep research agent
+│   ├── CLAUDE.md                # This file - your guiding light
+│   ├── .env                     # Environment variables (GCP project)
+│   └── app/                     # Production research agent
+│       ├── agent.py             # Core agent logic
+│       ├── config.py            # Configuration
+│       └── __init__.py
+├── experiments/                 # EXPERIMENTS - Local only (gitignored)
+│   ├── code_execution_01/       # [SUCCESS] Financial Data Visualization
+│   ├── code_execution_02/       # [SUCCESS] HTML Report Generation
+│   └── code_execution_03/       # [PAUSED] Native Code Execution
+└── adk-equity-deep-research/    # GRADUATED - Professional equity research agent
+    ├── agent.py                 # 17-agent multi-stage pipeline
+    ├── config.py                # Agent configuration
+    ├── manage_sandbox.py        # Sandbox lifecycle management
+    ├── .docs/new_flow/          # HITL architecture implementation plan
+    └── README.md                # Full documentation
 ```
+
+**Note**: The `experiments/` folder is git-ignored and remains local only. Successful experiments are graduated to their own top-level projects (e.g., `adk-equity-deep-research`).
 
 ---
 
@@ -381,7 +377,7 @@ Track major changes to `app/` agent:
 | 001 | Financial Data Visualization (code_execution_01) | SUCCESS | Multi-agent pipeline combining Google Search + Code Execution to generate financial charts |
 | 002 | HTML Report Generation (code_execution_02) | **SUCCESS - RECOMMENDED** | Extended 01 with 5th agent for self-contained HTML report with embedded chart. Callback-based execution provides 100% reliability. |
 | 003 | Native Code Execution (code_execution_03) | **PAUSED** | Native AgentEngineSandboxCodeExecutor works for simple queries but causes infinite loops on complex queries. Instruction-based STOP conditions insufficient. Gemini 3 Pro has malformed function call issues. Use 02 instead. |
-| 004 | Comprehensive Equity Research (code_execution_04) | **IN DEVELOPMENT** | Multi-chart equity research report generator. Uses ParallelAgent (4 concurrent data fetchers), LoopAgent (chart generation), and custom BaseAgent (ChartProgressChecker). Generates 5-10 charts per professional HTML report. |
+| 004 | Comprehensive Equity Research | **GRADUATED → adk-equity-deep-research** | 17-agent multi-stage equity research pipeline. Professional-grade reports with 5-10 charts, AI-generated infographics (2-5), and comprehensive analysis. Query classification, ParallelAgent data fetching, LoopAgent chart generation, custom ChartProgressChecker. Ready for HITL planning enhancement (see `.docs/new_flow/`). |
 
 ---
 

@@ -13,9 +13,11 @@
 !retail-ai-location-strategy/.ai/.claude/
 !retail-ai-location-strategy/.ai/.claude/**
 
-# Docs folder
-retail-ai-location-strategy/.docs/
-adk-deep-research/.docs/
+# Experiments folder (keep local only)
+experiments/
+
+# Docs folders (all .docs/ folders anywhere in the repo)
+.docs/
 
 # Blog internal files
 retail-ai-location-strategy/blog/implementation_plan.md
