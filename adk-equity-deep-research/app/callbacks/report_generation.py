@@ -12,11 +12,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""HTML report generation and artifact saving callback."""
+"""HTML and PDF report generation and artifact saving callback."""
 
 import re
 
 from google.genai import types
+
+from ..config import ENABLE_PDF_EXPORT, PDF_REPORT_FILENAME
+
+# Lazy import weasyprint to avoid startup failures if not installed
+_weasyprint = None
+
+# CSS to inject for proper PDF page sizing
+# HTML uses max-width: 1100px, so we set page to 1100px + minimal margins
+PDF_PAGE_CSS = """
+@page {
+    size: 1100px auto;  /* Exact content width, no extra margins */
+    margin: 0.25in 0;   /* Minimal top/bottom margin, no side margins */
+}
+
+body {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 10px !important;
+}
+
+.container, .page, main, article, section {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+"""
+
+
+def _get_weasyprint():
+    """Lazily import weasyprint to handle cases where it's not installed."""
+    global _weasyprint
+    if _weasyprint is None:
+        try:
+            import weasyprint
+            _weasyprint = weasyprint
+        except ImportError:
+            _weasyprint = False  # Mark as unavailable
+    return _weasyprint if _weasyprint else None
+
+
+def _inject_pdf_styles(html_content: str) -> str:
+    """Inject PDF-specific styles into HTML for proper page sizing."""
+    if "</style>" in html_content:
+        # Inject before the last </style>
+        parts = html_content.rsplit("</style>", 1)
+        return parts[0] + PDF_PAGE_CSS + "</style>" + parts[1]
+    elif "</head>" in html_content:
+        # Inject as new style block before </head>
+        return html_content.replace(
+            "</head>",
+            f"<style>{PDF_PAGE_CSS}</style></head>"
+        )
+    else:
+        # Prepend style block
+        return f"<style>{PDF_PAGE_CSS}</style>" + html_content
 
 
 async def save_html_report_callback(callback_context):
@@ -108,6 +165,40 @@ async def save_html_report_callback(callback_context):
         )
         print(f"   ✅ Saved equity_report.html as version {version}")
         state["report_result"] = f"Report saved: equity_report.html (version {version})"
+
+        # Generate PDF if enabled
+        if ENABLE_PDF_EXPORT:
+            print(f"\n📄 Generating PDF report...")
+            weasyprint = _get_weasyprint()
+            if weasyprint:
+                try:
+                    # Inject PDF-specific styles for proper page sizing
+                    pdf_html_content = _inject_pdf_styles(html_content)
+                    print(f"   ✓ Injected PDF page styles (1100px width)")
+
+                    # WeasyPrint handles base64 data URIs automatically
+                    pdf_bytes = weasyprint.HTML(string=pdf_html_content).write_pdf()
+                    print(f"   ✓ PDF generated ({len(pdf_bytes)} bytes)")
+
+                    pdf_artifact = types.Part.from_bytes(
+                        data=pdf_bytes,
+                        mime_type="application/pdf"
+                    )
+
+                    pdf_version = await callback_context.save_artifact(
+                        filename=PDF_REPORT_FILENAME,
+                        artifact=pdf_artifact
+                    )
+                    print(f"   ✅ Saved {PDF_REPORT_FILENAME} as version {pdf_version}")
+                    state["report_result"] += f", {PDF_REPORT_FILENAME} (version {pdf_version})"
+                except Exception as pdf_error:
+                    print(f"   ⚠️  PDF generation failed: {pdf_error}")
+                    print(f"   (HTML report was saved successfully)")
+            else:
+                print(f"   ⚠️  WeasyPrint not installed - skipping PDF generation")
+                print(f"   Install with: pip install weasyprint")
+        else:
+            print(f"\n📄 PDF export disabled (ENABLE_PDF_EXPORT=false)")
 
         # Save query summary for next classification
         print(f"\n📝 Saving query summary for future classification...")

@@ -26,3 +26,6 @@ pydantic
 
 # Vertex AI client
 vertexai
+
+# PDF export (optional - for generating PDF reports)
+weasyprint>=60.0

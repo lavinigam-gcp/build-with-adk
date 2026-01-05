@@ -115,6 +115,16 @@ RETRY_INITIAL_DELAY = 2  # seconds
 RETRY_MAX_DELAY = 10  # seconds
 
 # ==============================================================================
+# PDF Export Configuration
+# ==============================================================================
+
+# Enable PDF generation alongside HTML report
+ENABLE_PDF_EXPORT = os.environ.get("ENABLE_PDF_EXPORT", "true").lower() == "true"
+
+# PDF filename
+PDF_REPORT_FILENAME = "equity_report.pdf"
+
+# ==============================================================================
 # Logging Configuration
 # ==============================================================================
 
