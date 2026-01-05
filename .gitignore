@@ -19,6 +19,11 @@ experiments/
 # Docs folders (all .docs/ folders anywhere in the repo)
 .docs/
 
+# Generated artifacts
+equity_report.html
+chart_*.png
+infographic_*.png
+
 # Blog internal files
 retail-ai-location-strategy/blog/implementation_plan.md
 retail-ai-location-strategy/blog/assets/image-prompts.json
