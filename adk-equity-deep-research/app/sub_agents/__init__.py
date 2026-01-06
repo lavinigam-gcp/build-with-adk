@@ -14,10 +14,16 @@
 
 """Sub-agents for the equity research pipeline.
 
-This module exports all 17 agents used in the 8-stage research pipeline.
+This module exports all agents used in the equity research system:
+- Validation and classification agents (query_validator, query_classifier, follow_up_handler)
+- Planning and data gathering agents
+- Chart and infographic generation agents
+- Analysis and report generation agents
 """
 
+from .validator.agent import query_validator
 from .classifier.agent import query_classifier
+from .classifier.follow_up_handler import follow_up_handler
 from .planner.agent import research_planner
 from .data_fetchers.parallel_pipeline import parallel_data_gatherers
 from .consolidator.agent import data_consolidator
@@ -28,13 +34,19 @@ from .analysis.agent import analysis_writer
 from .report_generator.agent import html_report_generator
 
 __all__ = [
+    # Validation and classification
+    "query_validator",
     "query_classifier",
+    "follow_up_handler",
+    # Planning and data gathering
     "research_planner",
     "parallel_data_gatherers",
     "data_consolidator",
+    # Chart and infographic generation
     "chart_generation_loop",
     "infographic_planner",
     "infographic_generator",
+    # Analysis and report generation
     "analysis_writer",
     "html_report_generator",
 ]

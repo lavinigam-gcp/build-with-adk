@@ -1,10 +1,19 @@
 # Experiment 004: Professional-Grade Equity Research Report Agent
 
-## Status: WORKING (v2.0 - Professional Grade) ✅
+## Status: WORKING (v2.1 - Professional Grade with HITL) ✅
+
+**Version 2.1 (2026-01-06)**: Added boundary validation, multi-market support, and callback-based routing.
 
 **Version 2.0 (2025-12-30)**: Upgraded to Morgan Stanley / Goldman Sachs standards with "Setup → Visual → Interpretation" pattern for all visuals.
 
 A sophisticated multi-chart equity research report generator that produces **professional investment-grade reports** with contextualized visualizations, AI-generated infographics, data tables, and comprehensive company coverage.
+
+**v2.1 Key Improvements** (Phase 1 - Foundation):
+- ✅ **Boundary Validation**: Rejects unsupported queries (crypto, trading advice, private companies, personal finance)
+- ✅ **Multi-Market Support**: US, India, China, Japan, Korea, Europe with market-specific metrics
+- ✅ **Market Auto-Detection**: Automatically detects market from company names and context
+- ✅ **FOLLOW_UP Rejection**: Gracefully rejects follow-up queries with guidance to create comprehensive queries
+- ✅ **Callback-Based Routing**: Clean routing using `after_agent_callback` for validation/classification
 
 **v2.0 Key Improvements**:
 - ✅ All infographics: Square (1:1), 2K resolution, white/light themes
@@ -91,22 +100,76 @@ SANDBOX_RESOURCE_NAME=projects/YOUR_PROJECT_NUMBER/locations/us-central1/reasoni
 
 ---
 
+## Boundary Validation (v2.1)
+
+The agent rejects queries that fall outside its scope with helpful guidance:
+
+| Category | Example Keywords | Rejection Reason |
+|----------|-----------------|------------------|
+| **Crypto/NFT** | bitcoin, ethereum, nft, defi | Cryptocurrency analysis not supported |
+| **Trading Advice** | should i buy, sell now, entry point | Buy/sell recommendations not provided |
+| **Private Companies** | startup valuation, pre-ipo, unlisted | Requires public financials |
+| **Personal Finance** | my portfolio, retirement planning | Consult a financial advisor |
+| **Non-Financial** | weather, recipe, travel | Only equity research supported |
+| **Penny Stocks** | otc market, pink sheets | Limited data availability |
+
+Configuration: `app/rules/boundaries_config.py` (templatized - easy to add/modify/delete rules)
+
+---
+
+## Supported Markets (v2.1)
+
+| Market | Exchanges | Currency | Market-Specific Metrics |
+|--------|-----------|----------|------------------------|
+| **US** | NYSE, NASDAQ, AMEX | USD ($) | Standard metrics |
+| **India** | NSE, BSE | INR (₹) | Promoter Holding %, FII/DII Flows |
+| **China** | SSE, SZSE, HKEX | CNY (¥) | State Ownership %, A/H-Share Premium |
+| **Japan** | TSE, OSE | JPY (¥) | Keiretsu Affiliation, Cross-Shareholding |
+| **Korea** | KRX, KOSDAQ | KRW (₩) | Chaebol Affiliation, Foreign Ownership Limit |
+| **Europe** | LSE, Euronext, XETRA | EUR (€) | ESG Compliance, EU Taxonomy Alignment |
+
+**Market Auto-Detection**: The agent automatically detects markets from company names (e.g., "Reliance" → India, "Toyota" → Japan).
+
+Configuration: `app/rules/markets_config.py` (templatized - easy to add new markets)
+
+---
+
 ## Architecture
 
-```
+```text
 User Query: "Do a fundamental analysis of Alphabet"
                           |
++===========================================================+
+|      root_agent (SequentialAgent with Routing)           |
++===========================================================+
+|                                                           |
+|  0. QUERY VALIDATOR (v2.1)                                |
+|     - Checks boundary rules (crypto, trading advice, etc) |
+|     - after_agent_callback: check_validation_callback     |
+|     - If invalid → respond with rejection + capabilities  |
+|     - output_key: "query_validation"                      |
+|                                                           |
+|  1. QUERY CLASSIFIER (v2.1)                               |
+|     - Classifies as NEW_QUERY or FOLLOW_UP                |
+|     - Detects market (US, India, China, Japan, Korea, EU) |
+|     - after_agent_callback: check_classification_callback |
+|     - If FOLLOW_UP → respond with guidance to create new  |
+|     - output_key: "query_classification"                  |
+|                                                           |
++===========================================================+
+                          | (only if valid NEW_QUERY)
 +----------------------------------------------------------+
 |      equity_research_pipeline (SequentialAgent)          |
+|      before_agent_callback: skip_if_rejected_callback    |
 +----------------------------------------------------------+
 |                                                          |
-|  1. RESEARCH PLANNER AGENT                               |
+|  2. RESEARCH PLANNER AGENT                               |
 |     - Analyzes query, identifies company                 |
 |     - Plans which metrics/charts are needed (5-8)        |
 |     - output_schema: ResearchPlan                        |
 |     - output_key: "research_plan"                        |
 |                                                          |
-|  2. PARALLEL DATA GATHERERS (ParallelAgent)              |
+|  3. PARALLEL DATA GATHERERS (ParallelAgent)              |
 |     - Run 4 data fetchers concurrently:                  |
 |     +-----------------------------------------------+    |
 |     | financial_data_fetcher → "financial_data"     |    |
@@ -115,13 +178,13 @@ User Query: "Do a fundamental analysis of Alphabet"
 |     | news_sentiment_fetcher → "news_data"          |    |
 |     +-----------------------------------------------+    |
 |                                                          |
-|  3. DATA CONSOLIDATOR AGENT                              |
+|  4. DATA CONSOLIDATOR AGENT                              |
 |     - Merges all 4 fetcher outputs                       |
 |     - Extracts structured metrics for charting           |
 |     - output_schema: ConsolidatedResearchData            |
 |     - output_key: "consolidated_data"                    |
 |                                                          |
-|  4. CHART GENERATION LOOP (LoopAgent)                    |
+|  5. CHART GENERATION LOOP (LoopAgent)                    |
 |     - max_iterations: 10                                 |
 |     +-----------------------------------------------+    |
 |     | chart_code_generator (LlmAgent)               |    |
@@ -133,14 +196,14 @@ User Query: "Do a fundamental analysis of Alphabet"
 |     |   - Escalates when done → exits loop          |    |
 |     +-----------------------------------------------+    |
 |                                                          |
-|  5. INFOGRAPHIC PLANNER AGENT (NEW)                      |
-|     - Plans 3 AI-generated infographics                  |
+|  6. INFOGRAPHIC PLANNER AGENT                            |
+|     - Plans 2-5 AI-generated infographics                |
 |     - Generates detailed prompts for each                |
 |     - output_schema: InfographicPlan                     |
 |     - output_key: "infographic_plan"                     |
 |                                                          |
-|  6. PARALLEL INFOGRAPHIC GENERATORS (ParallelAgent, NEW) |
-|     - Run 3 generators concurrently:                     |
+|  7. PARALLEL INFOGRAPHIC GENERATORS (ParallelAgent)      |
+|     - Run generators concurrently:                       |
 |     +-----------------------------------------------+    |
 |     | infographic_generator_1 → Business Model      |    |
 |     | infographic_generator_2 → Competitive Landscape|   |
@@ -149,12 +212,12 @@ User Query: "Do a fundamental analysis of Alphabet"
 |     - Uses generate_infographic tool with Gemini 3 Pro  |
 |     - Saves to "infographics_generated" state           |
 |                                                          |
-|  7. ANALYSIS WRITER AGENT                                |
+|  8. ANALYSIS WRITER AGENT                                |
 |     - Writes 7 narrative analysis sections               |
 |     - output_schema: AnalysisSections                    |
 |     - output_key: "analysis_sections"                    |
 |                                                          |
-|  8. HTML REPORT GENERATOR AGENT                          |
+|  9. HTML REPORT GENERATOR AGENT                          |
 |     - Creates multi-section professional report          |
 |     - Embeds charts (CHART_1_PLACEHOLDER, etc.)          |
 |     - Embeds infographics (INFOGRAPHIC_1_PLACEHOLDER)    |
@@ -498,7 +561,33 @@ Analyze Caterpillar assessing construction equipment demand recovery, mining equ
 
 ## Key Design Decisions
 
-### 1. Callback-Based Code Execution
+### 1. Callback-Based Routing (v2.1)
+
+The agent uses `after_agent_callback` to check validation/classification results and stop the pipeline:
+
+```python
+# In app/callbacks/routing.py
+async def check_validation_callback(callback_context):
+    """Check validation result after query_validator runs."""
+    state = callback_context.state
+    validation = state.get("query_validation", {})
+
+    if not validation.get("is_valid", True):
+        # Return Content to stop pipeline and respond
+        return types.Content(
+            role="model",
+            parts=[types.Part.from_text(text=rejection_message)]
+        )
+    return None  # Continue to next agent
+```
+
+| Pattern | Use Case | How It Works |
+|---------|----------|--------------|
+| `after_agent_callback` | Routing decisions | Check output, return Content to stop or None to continue |
+| `before_agent_callback` | Skip stages | Return Content to skip stage, None to proceed |
+| State flags | Cross-agent coordination | Set `skip_pipeline=True` to signal downstream agents |
+
+### 2. Callback-Based Code Execution
 
 Learned from experiment 03's infinite loop issues, we use callbacks to execute chart code:
 
@@ -507,7 +596,7 @@ Learned from experiment 03's infinite loop issues, we use callbacks to execute c
 | **Callback (04)** | 100% | LLM generates code, callback executes ONCE |
 | Native code_executor (03) | ~70% | LLM sees results, tries to "improve" |
 
-### 2. ParallelAgent for Data Fetching + Infographics
+### 3. ParallelAgent for Data Fetching + Infographics
 
 Running agents concurrently reduces total time significantly:
 
@@ -534,7 +623,7 @@ parallel_infographic_generators = ParallelAgent(
 )
 ```
 
-### 3. Tool-Based Image Generation
+### 4. Tool-Based Image Generation
 
 Instead of code execution, infographics use a FunctionTool that wraps Gemini 3 Pro Image:
 
@@ -548,7 +637,7 @@ infographic_generator_1 = LlmAgent(
 )
 ```
 
-### 4. Placeholder-Based Image Injection
+### 5. Placeholder-Based Image Injection
 
 HTML uses placeholders that callbacks replace with base64:
 
@@ -586,14 +675,17 @@ HTML uses placeholders that callbacks replace with base64:
 
 ---
 
-**Last Updated**: 2025-12-30 (v2.0)
-**Experiment Status**: WORKING - PROFESSIONAL GRADE
+**Last Updated**: 2026-01-06 (v2.1)
+**Experiment Status**: WORKING - PROFESSIONAL GRADE WITH HITL
 **Base Experiment**: code_execution_02 (SUCCESS - RECOMMENDED)
-**Key ADK Features**: ParallelAgent, LoopAgent, Custom BaseAgent, FunctionTool
+**Key ADK Features**: ParallelAgent, LoopAgent, Custom BaseAgent, FunctionTool, Callback-Based Routing
 **Expected Charts**: 5-10 per report (all contextualized with Setup→Visual→Interpretation)
 **Expected Infographics**: 2-5 per report (dynamic, 1:1, 2K, white theme)
 **Report Quality**: Morgan Stanley / Goldman Sachs standards
+**Supported Markets**: US, India, China, Japan, Korea, Europe (auto-detected)
 
-**v2.0 Documentation**:
-- Implementation Summary: `.docs/IMPLEMENTATION_SUMMARY.md`
-- Overhaul Plan: `.docs/OVERHAUL_PLAN.md`
+**Documentation**:
+
+- v2.1 Implementation Plan: `.docs/new_flow/IMPLEMENTATION_PLAN_v2.md`
+- v2.0 Implementation Summary: `.docs/IMPLEMENTATION_SUMMARY.md`
+- v2.0 Overhaul Plan: `.docs/OVERHAUL_PLAN.md`

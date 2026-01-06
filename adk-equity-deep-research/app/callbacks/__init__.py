@@ -21,6 +21,11 @@ from .state_management import (
 )
 from .infographic_summary import create_infographics_summary_callback
 from .report_generation import save_html_report_callback
+from .routing import (
+    check_validation_callback,
+    check_classification_callback,
+    skip_if_rejected_callback,
+)
 
 __all__ = [
     "execute_chart_code_callback",
@@ -28,4 +33,7 @@ __all__ = [
     "ensure_classifier_state_callback",
     "create_infographics_summary_callback",
     "save_html_report_callback",
+    "check_validation_callback",
+    "check_classification_callback",
+    "skip_if_rejected_callback",
 ]

@@ -18,16 +18,21 @@ A professional multi-stage agent pipeline that generates comprehensive equity
 research reports with charts, infographics, and analysis.
 
 Architecture:
-    17 agents across 9 stages:
-    - Stage 0: Query Classification (NEW_QUERY vs FOLLOW_UP)
-    - Stage 1: Research Planning
-    - Stage 2: Parallel Data Gathering (4 concurrent fetchers)
-    - Stage 3: Data Consolidation
-    - Stage 4: Chart Generation Loop (LoopAgent)
-    - Stage 5: Infographic Planning
-    - Stage 6: Infographic Generation (batch parallel)
-    - Stage 7: Analysis Writing (Setup→Visual→Interpretation)
-    - Stage 8: HTML Report Generation
+    The agent uses callback-based routing with boundary validation:
+    - Stage 0: Query Validation (rejects crypto, trading advice, etc.)
+    - Stage 1: Query Classification (NEW_QUERY vs FOLLOW_UP with market detection)
+    - Stages 2-9: Research pipeline (only runs for valid NEW_QUERY)
+
+    Routing is handled by after_agent_callbacks that check state and can
+    stop the pipeline by returning a response Content.
+
+Supported Markets:
+    - US (NYSE, NASDAQ)
+    - India (NSE, BSE)
+    - China (SSE, SZSE, HKEX)
+    - Japan (TSE)
+    - Korea (KRX, KOSDAQ)
+    - Europe (LSE, Euronext, XETRA)
 
 Final Output:
     - equity_report.html (multi-page report with embedded charts/infographics)
@@ -41,9 +46,11 @@ Usage:
     "Analyze Tesla stock with focus on profitability and valuation"
 """
 
-from google.adk.agents import SequentialAgent
+from google.adk.agents import SequentialAgent, LlmAgent
 
+from .config import APP_NAME, MODEL
 from .sub_agents import (
+    query_validator,
     query_classifier,
     research_planner,
     parallel_data_gatherers,
@@ -54,11 +61,42 @@ from .sub_agents import (
     analysis_writer,
     html_report_generator,
 )
-from .callbacks import ensure_classifier_state_callback
-from .config import APP_NAME
+from .callbacks import (
+    ensure_classifier_state_callback,
+    check_validation_callback,
+    check_classification_callback,
+    skip_if_rejected_callback,
+)
+
+
+# Create wrapped versions of validator and classifier with routing callbacks
+# These callbacks check results and can stop the pipeline if needed
+
+# Wrap query_validator with after_agent_callback for validation check
+query_validator_with_routing = LlmAgent(
+    model=MODEL,
+    name="query_validator",
+    description=query_validator.description,
+    instruction=query_validator.instruction,
+    output_schema=query_validator.output_schema,
+    output_key=query_validator.output_key,
+    after_agent_callback=check_validation_callback,
+)
+
+# Wrap query_classifier with after_agent_callback for classification check
+query_classifier_with_routing = LlmAgent(
+    model=MODEL,
+    name="query_classifier",
+    description=query_classifier.description,
+    instruction=query_classifier.instruction,
+    output_schema=query_classifier.output_schema,
+    output_key=query_classifier.output_key,
+    after_agent_callback=check_classification_callback,
+)
 
 
 # Main equity research pipeline (8 stages)
+# Wrapped with skip_if_rejected_callback to skip if validation/classification failed
 equity_research_pipeline = SequentialAgent(
     name="equity_research_pipeline",
     description="""
@@ -84,6 +122,7 @@ equity_research_pipeline = SequentialAgent(
 
     Final Output: equity_report.html + chart_1.png, chart_2.png, ... + infographic_1.png to infographic_5.png
     """,
+    before_agent_callback=skip_if_rejected_callback,
     sub_agents=[
         research_planner,               # 1. Plan metrics
         parallel_data_gatherers,        # 2. Fetch data (parallel)
@@ -97,35 +136,41 @@ equity_research_pipeline = SequentialAgent(
 )
 
 
-# Root agent with query classification (entry point)
+# Root agent with callback-based routing
+# Flow: validator -> (check) -> classifier -> (check) -> pipeline
 root_agent = SequentialAgent(
-    name="equity_research_with_classifier",
+    name="equity_research_agent",
     description=f"""
-    Professional equity research agent ({APP_NAME}) with intelligent query classification.
+    Professional equity research agent ({APP_NAME}) with intelligent routing.
 
-    Stage 0: Query Classifier - Classifies user message as NEW_QUERY or FOLLOW_UP
-        - NEW_QUERY: Different company → resets visualization state (charts, infographics)
-        - FOLLOW_UP: Same company, additional request → preserves state
+    Features:
+    - Boundary validation (rejects crypto, trading advice, private companies, etc.)
+    - Multi-market support (US, India, China, Japan, Korea, Europe)
+    - Market auto-detection from query context
+    - FOLLOW_UP queries gracefully rejected with guidance
 
-    Stages 1-8: Standard equity research pipeline
-
-    This enables:
-    - Multiple companies analyzed in same session without chart collisions
-    - Follow-up queries like "Add Operating Margin chart" preserve existing state
-    - Intelligent semantic detection using company name comparison
+    Flow:
+    1. Query Validator → checks boundary rules (crypto, trading advice, etc.)
+       - If invalid: responds with rejection message and stops
+    2. Query Classifier → classifies as NEW_QUERY/FOLLOW_UP, detects market
+       - If FOLLOW_UP: responds with guidance and stops
+    3. Equity Research Pipeline → generates comprehensive report
+       - Only runs for valid NEW_QUERY
 
     Example queries:
     - "Analyze Apple stock focusing on financial performance"
-    - "Generate equity research report for Tesla with valuation metrics"
-    - "Comprehensive equity analysis of Microsoft including growth trends"
+    - "Comprehensive analysis of Reliance Industries" (India market detected)
+    - "Compare Toyota vs Honda" (Japan market detected)
+    - "Generate equity research report for ASML" (Europe market detected)
     """,
     before_agent_callback=ensure_classifier_state_callback,
     sub_agents=[
-        query_classifier,              # Stage 0: Classify query type
-        equity_research_pipeline,      # Stages 1-8: Main pipeline
+        query_validator_with_routing,    # Stage 0: Validate + routing callback
+        query_classifier_with_routing,   # Stage 1: Classify + routing callback
+        equity_research_pipeline,        # Stages 2-9: Main pipeline (skipped if rejected)
     ],
 )
 
 
 # Export root agent (for adk web app)
-__all__ = ["root_agent"]
+__all__ = ["root_agent", "equity_research_pipeline"]

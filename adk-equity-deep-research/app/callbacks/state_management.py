@@ -16,11 +16,11 @@
 
 
 async def initialize_charts_state_callback(callback_context):
-    """Initialize or reset charts_generated, charts_summary, and infographics_summary based on query classification.
+    """Initialize/reset charts state for new query.
 
-    Uses the query_classifier agent's output to determine if this is a NEW_QUERY (reset state)
-    or FOLLOW_UP (preserve state). This ensures the template variables exist in state before
-    the chart/infographic generation starts.
+    Always resets state since FOLLOW_UP queries are no longer supported.
+    This ensures the template variables exist in state before the chart/infographic
+    generation starts.
     """
     print("\n" + "="*80)
     print("INITIALIZE CHARTS STATE CALLBACK - START")
@@ -31,39 +31,15 @@ async def initialize_charts_state_callback(callback_context):
     print(f"📋 Agent: {callback_context.agent_name}")
     print(f"🔑 Invocation ID: {callback_context.invocation_id}")
 
-    # Check query classification from classifier agent
-    classification = state.get("query_classification")
-    query_type = classification.get("query_type", "NEW_QUERY") if classification else "NEW_QUERY"
-    reasoning = classification.get("reasoning", "No classification available") if classification else "No classification available"
+    # Always reset visualization state for fresh analysis
+    # (FOLLOW_UP queries are rejected before reaching this point)
+    print("\n🔄 Resetting visualization state for new analysis...")
 
-    print(f"\n🔍 Query Classification: {query_type}")
-    print(f"   Reasoning: {reasoning}")
+    state["charts_generated"] = []
+    state["charts_summary"] = []
+    state["infographics_summary"] = []
 
-    if query_type == "NEW_QUERY":
-        # New query detected - reset visualization state
-        print(f"\n🔄 NEW QUERY - Resetting visualization state")
-        print("   Clearing old chart and infographic state for fresh analysis...")
-
-        state["charts_generated"] = []
-        state["charts_summary"] = []
-        state["infographics_summary"] = []
-
-        print("✓ Cleared all chart and infographic state for fresh analysis")
-    else:  # FOLLOW_UP
-        print(f"\n↪️  FOLLOW-UP QUERY - Preserving existing state")
-        print(f"   Current state:")
-        print(f"   - charts_generated: {len(state.get('charts_generated', []))} items")
-        print(f"   - charts_summary: {len(state.get('charts_summary', []))} items")
-        print(f"   - infographics_summary: {len(state.get('infographics_summary', []))} items")
-
-    # Ensure state variables exist (defensive programming)
-    if "charts_generated" not in state:
-        state["charts_generated"] = []
-    if "charts_summary" not in state:
-        state["charts_summary"] = []
-    if "infographics_summary" not in state:
-        state["infographics_summary"] = []
-
+    print("✓ State reset complete")
     print("="*80 + "\n")
 
 

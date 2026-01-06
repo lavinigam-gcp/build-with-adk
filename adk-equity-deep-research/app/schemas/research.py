@@ -80,3 +80,7 @@ class QueryClassification(BaseModel):
         default="",
         description="Company/stock ticker mentioned in message, if any"
     )
+    detected_market: str = Field(
+        default="US",
+        description="Detected market: US, India, China, Japan, Korea, or Europe"
+    )
