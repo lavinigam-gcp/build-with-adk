@@ -61,13 +61,13 @@ async def create_infographics_summary_callback(callback_context):
 
         # Debug: Check size of all state variables that will be passed to analysis_writer
         print(f"\n📏 STATE SIZE CHECK (for analysis_writer):")
-        print(f"   research_plan: {len(str(state.get('research_plan', '')))} chars")
+        print(f"   enhanced_research_plan: {len(str(state.get('enhanced_research_plan', '')))} chars")
         print(f"   consolidated_data: {len(str(state.get('consolidated_data', '')))} chars")
         print(f"   charts_summary: {len(str(state.get('charts_summary', '')))} chars")
         print(f"   infographics_summary: {len(str(infographics_summary))} chars")
 
         total_state_size = (
-            len(str(state.get('research_plan', ''))) +
+            len(str(state.get('enhanced_research_plan', ''))) +
             len(str(state.get('consolidated_data', ''))) +
             len(str(state.get('charts_summary', ''))) +
             len(str(infographics_summary))

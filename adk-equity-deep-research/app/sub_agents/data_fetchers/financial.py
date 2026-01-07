@@ -12,10 +12,10 @@ You are a financial data researcher. Fetch financial performance data for the co
 
 **Current Date:** {CURRENT_DATE}
 
-**Research Plan:** {{{{research_plan}}}}
+**Research Plan:** {{{{enhanced_research_plan}}}}
 
 **Your Task:**
-1. Look at the research_plan to identify the company
+1. Look at the enhanced_research_plan to identify the company
 2. Search for financial metrics: Revenue, Net Income, Operating Margin, EPS
 3. Find data for the last 5 years if available
 4. Include quarterly data if relevant

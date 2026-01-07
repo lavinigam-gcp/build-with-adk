@@ -26,14 +26,30 @@ from .routing import (
     check_classification_callback,
     skip_if_rejected_callback,
 )
+from .planning import (
+    check_plan_state_callback,
+    present_plan_callback,
+    process_plan_response_callback,
+    skip_if_not_approved_callback,
+)
 
 __all__ = [
+    # Chart execution
     "execute_chart_code_callback",
+    # State management
     "initialize_charts_state_callback",
     "ensure_classifier_state_callback",
+    # Infographic
     "create_infographics_summary_callback",
+    # Report generation
     "save_html_report_callback",
+    # Phase 1 routing
     "check_validation_callback",
     "check_classification_callback",
     "skip_if_rejected_callback",
+    # Phase 2 HITL planning
+    "check_plan_state_callback",
+    "present_plan_callback",
+    "process_plan_response_callback",
+    "skip_if_not_approved_callback",
 ]

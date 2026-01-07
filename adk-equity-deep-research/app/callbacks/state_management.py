@@ -44,14 +44,36 @@ async def initialize_charts_state_callback(callback_context):
 
 
 async def ensure_classifier_state_callback(callback_context):
-    """Ensure last_query_summary exists before query_classifier runs.
+    """Ensure required state variables exist before agents run.
 
-    On the first query in a session, last_query_summary won't exist yet and
-    template variable injection will fail with KeyError. Initialize with
-    default value if missing.
+    On the first query in a session, certain state variables won't exist yet
+    and template variable injection will fail with KeyError. Initialize with
+    default values if missing.
+
+    Also resets turn-based flags for HITL flow control.
     """
     state = callback_context.state
 
+    # Initialize query classifier state
     if "last_query_summary" not in state:
         state["last_query_summary"] = "No previous query context (first query in session)"
         print("✓ Initialized last_query_summary for first query in session")
+
+    # Initialize HITL planning state (Phase 2)
+    if "plan_state" not in state:
+        state["plan_state"] = "none"
+        print("✓ Initialized plan_state to 'none'")
+
+    # CRITICAL: Reset turn-based flags at the start of each turn
+    # This ensures that after a plan is presented or rejection shown,
+    # subsequent agents in the SAME turn skip, but on the NEXT turn they can run.
+    if state.get("plan_presented_this_turn"):
+        state["plan_presented_this_turn"] = False
+        print("✓ Reset plan_presented_this_turn flag for new turn")
+
+    # Reset skip_pipeline flag for new turn
+    # This allows the next query to be processed fresh
+    if state.get("skip_pipeline"):
+        state["skip_pipeline"] = False
+        state["pipeline_response"] = None
+        print("✓ Reset skip_pipeline flag for new turn")

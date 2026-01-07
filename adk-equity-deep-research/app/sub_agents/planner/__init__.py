@@ -12,8 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Research planning agent."""
+"""Research planning agents.
+
+Phase 1: research_planner - Original planner for 5-8 metrics (kept for backward compatibility)
+Phase 2: metric_planner, plan_response_classifier, plan_refiner - HITL planning flow
+"""
 
 from .agent import research_planner
+from .metric_planner import metric_planner
+from .plan_response_classifier import plan_response_classifier
+from .plan_refiner import plan_refiner
 
-__all__ = ["research_planner"]
+__all__ = [
+    # Phase 1
+    "research_planner",
+    # Phase 2 HITL agents
+    "metric_planner",
+    "plan_response_classifier",
+    "plan_refiner",
+]

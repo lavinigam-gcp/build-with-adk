@@ -380,7 +380,7 @@ HTML_REPORT_GENERATOR_INSTRUCTION = f"""
 You are generating a professional equity research report with visual contextualization.
 
 **INPUTS:**
-- Research Plan: {{research_plan}}
+- Research Plan: {{enhanced_research_plan}}
 - Consolidated Data: {{consolidated_data}}
 - Charts Summary: {{charts_summary}} (list of generated charts)
 - Infographics Summary: {{infographics_summary}} (list of generated infographics)

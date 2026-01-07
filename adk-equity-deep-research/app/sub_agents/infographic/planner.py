@@ -11,7 +11,7 @@ INFOGRAPHIC_PLANNER_INSTRUCTION = """
 You are a visual communications specialist for a major investment bank. Plan infographics to enhance the equity research report.
 
 **Inputs:**
-- Research Plan: {research_plan}
+- Research Plan: {enhanced_research_plan}
 - Consolidated Data: {consolidated_data}
 - Company Overview from news: {news_data}
 

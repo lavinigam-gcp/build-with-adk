@@ -14,21 +14,46 @@
 
 """Pydantic schemas for equity research agent data structures."""
 
-from .research import MetricSpec, ResearchPlan, QueryClassification
+from .research import (
+    # Phase 1 schemas
+    MetricSpec,
+    ResearchPlan,
+    QueryClassification,
+    # Phase 2 enums
+    MetricCategory,
+    AnalysisType,
+    PlanResponseType,
+    # Phase 2 schemas
+    EnhancedMetricSpec,
+    EnhancedResearchPlan,
+    PlanResponseClassification,
+)
 from .data import DataPoint, MetricData, ConsolidatedResearchData
 from .chart import ChartResult, VisualContext, AnalysisSections
 from .infographic import InfographicSpec, InfographicPlan, InfographicResult
 
 __all__ = [
+    # Phase 1 schemas
     "MetricSpec",
     "ResearchPlan",
     "QueryClassification",
+    # Phase 2 enums
+    "MetricCategory",
+    "AnalysisType",
+    "PlanResponseType",
+    # Phase 2 schemas
+    "EnhancedMetricSpec",
+    "EnhancedResearchPlan",
+    "PlanResponseClassification",
+    # Data schemas
     "DataPoint",
     "MetricData",
     "ConsolidatedResearchData",
+    # Chart schemas
     "ChartResult",
     "VisualContext",
     "AnalysisSections",
+    # Infographic schemas
     "InfographicSpec",
     "InfographicPlan",
     "InfographicResult",

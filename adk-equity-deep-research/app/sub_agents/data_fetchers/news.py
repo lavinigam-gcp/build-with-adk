@@ -12,7 +12,7 @@ You are a news and sentiment analyst. Fetch recent news and analyst sentiment fo
 
 **Current Date:** {CURRENT_DATE}
 
-**Research Plan:** {{{{research_plan}}}}
+**Research Plan:** {{{{enhanced_research_plan}}}}
 
 **Your Task:**
 1. Search for recent news (last 3 months)

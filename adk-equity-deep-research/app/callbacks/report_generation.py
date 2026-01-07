@@ -202,15 +202,18 @@ async def save_html_report_callback(callback_context):
 
         # Save query summary for next classification
         print(f"\n📝 Saving query summary for future classification...")
-        research_plan = state.get("research_plan")
+        research_plan = state.get("enhanced_research_plan")
         if research_plan:
+            # Handle both Pydantic model and dict
+            if hasattr(research_plan, "model_dump"):
+                research_plan = research_plan.model_dump()
             company = research_plan.get("company_name", "Unknown")
             ticker = research_plan.get("ticker", "")
             state["last_query_summary"] = f"Company: {company} ({ticker}), Analysis completed"
             print(f"   ✓ Saved query summary: Company={company}, Ticker={ticker}")
         else:
             state["last_query_summary"] = "Previous analysis completed (no company details available)"
-            print(f"   ⚠️  No research plan found, saved generic summary")
+            print(f"   ⚠️  No enhanced_research_plan found, saved generic summary")
 
         print("="*80 + "\n")
 

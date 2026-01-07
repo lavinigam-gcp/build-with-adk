@@ -74,7 +74,12 @@ async def check_validation_callback(callback_context):
 async def check_classification_callback(callback_context):
     """Check classification result after query_classifier runs.
 
-    If FOLLOW_UP query, respond with guidance and stop pipeline.
+    Handles:
+    1. FOLLOW_UP queries when no plan exists - reject with guidance
+    2. FOLLOW_UP queries when plan is pending - treat as plan refinement
+    3. Post-approval queries for same company - reject
+    4. Post-approval queries for new company - reset state for fresh HITL flow
+    5. Valid NEW_QUERY - continue to HITL planning
     """
     print("\n" + "="*80)
     print("CHECK CLASSIFICATION CALLBACK")
@@ -95,10 +100,71 @@ async def check_classification_callback(callback_context):
     detected_market = classification.get("detected_market", "US")
     reasoning = classification.get("reasoning", "")
 
+    # Get current plan state
+    plan_state = state.get("plan_state", "none")
+
     print(f"📋 Classification: type={query_type}, company={detected_company}, market={detected_market}")
+    print(f"   Plan state: {plan_state}")
     print(f"   Reasoning: {reasoning}")
 
-    if query_type == "FOLLOW_UP":
+    # PHASE 2: Handle post-approval rejection for same company
+    if plan_state == "approved":
+        approved_plan = state.get("enhanced_research_plan", {})
+        if hasattr(approved_plan, "model_dump"):
+            approved_plan = approved_plan.model_dump()
+
+        approved_company = approved_plan.get("company_name", "").lower() if approved_plan else ""
+
+        if detected_company and approved_company:
+            detected_lower = detected_company.lower()
+
+            # Check for same company (fuzzy match)
+            is_same_company = (
+                detected_lower in approved_company or
+                approved_company in detected_lower or
+                _are_similar_companies(detected_lower, approved_company)
+            )
+
+            if is_same_company:
+                print(f"❌ Same company query after approval - rejecting")
+
+                rejection_message = f"""The analysis for **{approved_plan.get('company_name', detected_company)}** has already been approved and is being generated.
+
+I cannot add more metrics or modify the plan at this point.
+
+**Options:**
+1. **Wait** for the current analysis to complete
+2. **Start a new session** with a comprehensive query that includes everything you need from the beginning
+
+For a **different company**, simply ask your question and I'll create a new research plan.
+"""
+                state["skip_pipeline"] = True
+                state["pipeline_response"] = rejection_message
+
+                print("="*80 + "\n")
+
+                return types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(text=rejection_message)]
+                )
+            else:
+                # New company after approval - reset for fresh HITL flow
+                print(f"🔄 New company detected ({detected_company}), resetting for fresh HITL flow")
+                state["plan_state"] = "none"
+                state["enhanced_research_plan"] = None
+                state["plan_response"] = None
+                # Continue to HITL planning with new company
+
+    # PHASE 2: Handle FOLLOW_UP when plan is pending (treat as refinement)
+    if query_type == "FOLLOW_UP" and plan_state == "pending":
+        print("✓ FOLLOW_UP with pending plan - will be treated as refinement")
+        # Don't reject - let HITL planning handle it
+        state["detected_market"] = detected_market
+        print("="*80 + "\n")
+        return None  # Continue to HITL planning
+
+    # Handle FOLLOW_UP when no plan exists
+    if query_type == "FOLLOW_UP" and plan_state not in ("pending", "approved"):
         print("❌ FOLLOW_UP query detected - providing guidance")
 
         # Build follow-up rejection response
@@ -126,9 +192,40 @@ This will generate a complete report with all the data you need in one go.
 
     # Store market in state for pipeline to use
     state["detected_market"] = detected_market
-    print(f"✓ NEW_QUERY detected, market={detected_market}, continuing to pipeline...")
+    print(f"✓ NEW_QUERY detected, market={detected_market}, continuing to HITL planning...")
     print("="*80 + "\n")
-    return None  # Continue to pipeline
+    return None  # Continue to HITL planning
+
+
+def _are_similar_companies(name1: str, name2: str) -> bool:
+    """Check if two company names are likely the same.
+
+    Uses simple heuristics to match variations like:
+    - "apple" vs "apple inc"
+    - "alphabet" vs "google"
+    - "meta" vs "facebook"
+    """
+    # Direct containment already handled in caller
+
+    # Common variations
+    variations = {
+        "google": ["alphabet", "googl"],
+        "alphabet": ["google", "googl"],
+        "meta": ["facebook", "fb"],
+        "facebook": ["meta", "fb"],
+    }
+
+    for key, aliases in variations.items():
+        if key in name1:
+            for alias in aliases:
+                if alias in name2:
+                    return True
+        if key in name2:
+            for alias in aliases:
+                if alias in name1:
+                    return True
+
+    return False
 
 
 async def skip_if_rejected_callback(callback_context):

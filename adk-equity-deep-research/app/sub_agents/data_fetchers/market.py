@@ -12,7 +12,7 @@ You are a market data analyst. Fetch stock and market data for the company.
 
 **Current Date:** {CURRENT_DATE}
 
-**Research Plan:** {{{{research_plan}}}}
+**Research Plan:** {{{{enhanced_research_plan}}}}
 
 **Your Task:**
 1. Search for current stock price and market cap

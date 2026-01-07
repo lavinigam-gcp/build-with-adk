@@ -1,12 +1,23 @@
 # Experiment 004: Professional-Grade Equity Research Report Agent
 
-## Status: WORKING (v2.1 - Professional Grade with HITL) ✅
+## Status: WORKING (v2.2 - Professional Grade with HITL Planning) ✅
+
+**Version 2.2 (2026-01-07)**: Added Human-In-The-Loop planning with user approval, plan refinement, and market-aware metrics.
 
 **Version 2.1 (2026-01-06)**: Added boundary validation, multi-market support, and callback-based routing.
 
 **Version 2.0 (2025-12-30)**: Upgraded to Morgan Stanley / Goldman Sachs standards with "Setup → Visual → Interpretation" pattern for all visuals.
 
 A sophisticated multi-chart equity research report generator that produces **professional investment-grade reports** with contextualized visualizations, AI-generated infographics, data tables, and comprehensive company coverage.
+
+**v2.2 Key Improvements** (Phase 2 - HITL Planning):
+- ✅ **Interactive Planning**: User reviews research plan before execution (10-15 metrics)
+- ✅ **Natural Language Approval**: Detects "looks good", "proceed", "approved" etc.
+- ✅ **Full Plan Refinement**: Users can add/remove metrics, change chart types, modify time range
+- ✅ **Structured Plan Presentation**: Clean markdown table with metrics, categories, priorities
+- ✅ **Market-Aware Metrics**: Includes market-specific metrics (India: Promoter %, China: State Ownership, etc.)
+- ✅ **Post-Approval Protection**: Rejects follow-up queries for same company after approval
+- ✅ **Turn Gating Pattern**: Properly pauses execution until user responds (ADK callback pattern)
 
 **v2.1 Key Improvements** (Phase 1 - Foundation):
 - ✅ **Boundary Validation**: Rejects unsupported queries (crypto, trading advice, private companies, personal finance)
@@ -141,6 +152,7 @@ User Query: "Do a fundamental analysis of Alphabet"
                           |
 +===========================================================+
 |      root_agent (SequentialAgent with Routing)           |
+|      before_agent_callback: ensure_classifier_state       |
 +===========================================================+
 |                                                           |
 |  0. QUERY VALIDATOR (v2.1)                                |
@@ -156,11 +168,29 @@ User Query: "Do a fundamental analysis of Alphabet"
 |     - If FOLLOW_UP → respond with guidance to create new  |
 |     - output_key: "query_classification"                  |
 |                                                           |
+|  2. HITL PLANNING AGENT (v2.2 NEW)                        |
+|     - before_agent_callback: check_plan_state_callback    |
+|     +------------------------------------------------+    |
+|     | metric_planner (if plan_state == "none")       |    |
+|     |   - Generates EnhancedResearchPlan (10-15 metrics)  |
+|     |   - after_callback: present_plan_callback      |    |
+|     |   - Sets plan_state = "pending", STOPS         |    |
+|     +------------------------------------------------+    |
+|     | plan_response_classifier (if plan_state == "pending") |
+|     |   - before_callback: skip_if_not_pending       |    |
+|     |   - Classifies: APPROVAL, REFINEMENT, NEW_QUERY|    |
+|     |   - after_callback: process_plan_response      |    |
+|     +------------------------------------------------+    |
+|     | plan_refiner (if response_type == "refinement")|    |
+|     |   - before_callback: skip_if_not_refinement    |    |
+|     |   - Updates plan, re-presents, STOPS           |    |
+|     +------------------------------------------------+    |
+|                                                           |
 +===========================================================+
-                          | (only if valid NEW_QUERY)
+                          | (only if plan_state == "approved")
 +----------------------------------------------------------+
 |      equity_research_pipeline (SequentialAgent)          |
-|      before_agent_callback: skip_if_rejected_callback    |
+|      before_agent_callback: skip_if_not_approved_callback|
 +----------------------------------------------------------+
 |                                                          |
 |  2. RESEARCH PLANNER AGENT                               |
@@ -235,7 +265,50 @@ User Query: "Do a fundamental analysis of Alphabet"
 
 ## Pydantic Schemas
 
-### Input Planning
+### HITL Planning (v2.2 NEW)
+
+```python
+class MetricCategory(str, Enum):
+    """Categories for metrics with market-specific support."""
+    FINANCIAL = "financial"      # Revenue, Net Income, EPS
+    VALUATION = "valuation"      # P/E, P/B, EV/EBITDA
+    PROFITABILITY = "profitability"  # Margins, ROE, ROA
+    GROWTH = "growth"            # Revenue/EPS growth rates
+    LIQUIDITY = "liquidity"      # Current ratio, quick ratio
+    SOLVENCY = "solvency"        # Debt/equity, interest coverage
+    MARKET_SPECIFIC = "market_specific"  # Promoter %, State ownership
+
+class EnhancedMetricSpec(BaseModel):
+    """Enhanced metric specification with market awareness."""
+    metric_name: str
+    category: MetricCategory
+    chart_type: Literal["line", "bar", "area", "pie", "heatmap"]
+    priority: int  # 1-10
+    search_query: str
+    is_market_specific: bool = False
+
+class EnhancedResearchPlan(BaseModel):
+    """Enhanced research plan with HITL support."""
+    company_name: str
+    ticker: str
+    exchange: str
+    market: Literal["US", "India", "China", "Japan", "Korea", "Europe"]
+    analysis_type: Literal["fundamental", "technical", "comprehensive"]
+    time_range_years: int = 5
+    metrics_to_analyze: list[EnhancedMetricSpec]  # 10-15 metrics
+    report_sections: list[str]
+    infographic_count: int = 3
+    plan_version: int = 1
+    approved_by_user: bool = False
+
+class PlanResponseClassification(BaseModel):
+    """Classification of user response to plan."""
+    response_type: Literal["approval", "refinement", "new_query"]
+    reasoning: str
+    refinement_request: Optional[str] = None
+```
+
+### Input Planning (Legacy)
 
 ```python
 class MetricSpec(BaseModel):
@@ -675,17 +748,19 @@ HTML uses placeholders that callbacks replace with base64:
 
 ---
 
-**Last Updated**: 2026-01-06 (v2.1)
-**Experiment Status**: WORKING - PROFESSIONAL GRADE WITH HITL
+**Last Updated**: 2026-01-07 (v2.2)
+**Experiment Status**: WORKING - PROFESSIONAL GRADE WITH HITL PLANNING
 **Base Experiment**: code_execution_02 (SUCCESS - RECOMMENDED)
-**Key ADK Features**: ParallelAgent, LoopAgent, Custom BaseAgent, FunctionTool, Callback-Based Routing
+**Key ADK Features**: ParallelAgent, LoopAgent, Custom BaseAgent, FunctionTool, Callback-Based Routing, Turn Gating
 **Expected Charts**: 5-10 per report (all contextualized with Setup→Visual→Interpretation)
 **Expected Infographics**: 2-5 per report (dynamic, 1:1, 2K, white theme)
 **Report Quality**: Morgan Stanley / Goldman Sachs standards
 **Supported Markets**: US, India, China, Japan, Korea, Europe (auto-detected)
+**HITL Planning**: Interactive plan approval with refinement support (10-15 metrics)
 
 **Documentation**:
 
+- v2.2 Plan (HITL Planning): `~/.claude/plans/magical-humming-wand.md`
 - v2.1 Implementation Plan: `.docs/new_flow/IMPLEMENTATION_PLAN_v2.md`
 - v2.0 Implementation Summary: `.docs/IMPLEMENTATION_SUMMARY.md`
 - v2.0 Overhaul Plan: `.docs/OVERHAUL_PLAN.md`

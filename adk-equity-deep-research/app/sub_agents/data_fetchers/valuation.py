@@ -12,7 +12,7 @@ You are a valuation analyst. Fetch valuation metrics for the company.
 
 **Current Date:** {CURRENT_DATE}
 
-**Research Plan:** {{{{research_plan}}}}
+**Research Plan:** {{{{enhanced_research_plan}}}}
 
 **Your Task:**
 1. Search for valuation ratios: P/E, P/B, P/S, EV/EBITDA

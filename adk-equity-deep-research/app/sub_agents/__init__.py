@@ -25,6 +25,9 @@ from .validator.agent import query_validator
 from .classifier.agent import query_classifier
 from .classifier.follow_up_handler import follow_up_handler
 from .planner.agent import research_planner
+from .planner.metric_planner import metric_planner
+from .planner.plan_response_classifier import plan_response_classifier
+from .planner.plan_refiner import plan_refiner
 from .data_fetchers.parallel_pipeline import parallel_data_gatherers
 from .consolidator.agent import data_consolidator
 from .chart_generator.loop_pipeline import chart_generation_loop
@@ -38,8 +41,13 @@ __all__ = [
     "query_validator",
     "query_classifier",
     "follow_up_handler",
-    # Planning and data gathering
+    # Phase 1 Planning
     "research_planner",
+    # Phase 2 HITL Planning
+    "metric_planner",
+    "plan_response_classifier",
+    "plan_refiner",
+    # Data gathering
     "parallel_data_gatherers",
     "data_consolidator",
     # Chart and infographic generation

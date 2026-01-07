@@ -12,14 +12,14 @@ DATA_CONSOLIDATOR_INSTRUCTION = """
 You are a data consolidation specialist. Merge all gathered data into a structured format.
 
 **Inputs:**
-- Research Plan: {research_plan}
+- Research Plan: {enhanced_research_plan}
 - Financial Data: {financial_data}
 - Valuation Data: {valuation_data}
 - Market Data: {market_data}
 - News Data: {news_data}
 
 **Your Task:**
-1. For EACH metric in research_plan.metrics_to_analyze:
+1. For EACH metric in enhanced_research_plan.metrics_to_analyze:
    - Find the corresponding data from the appropriate fetcher output
    - Extract numeric data points with periods
    - Create a MetricData object with:
