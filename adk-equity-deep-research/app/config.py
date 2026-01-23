@@ -125,6 +125,15 @@ ENABLE_PDF_EXPORT = os.environ.get("ENABLE_PDF_EXPORT", "true").lower() == "true
 PDF_REPORT_FILENAME = "equity_report.pdf"
 
 # ==============================================================================
+# Batch Chart Generation Configuration (Experimental)
+# ==============================================================================
+
+# Enable batch chart generation for ~5-10x speedup
+# When enabled: 1 LLM call + 1 sandbox execution (generates ALL charts at once)
+# When disabled: N LLM calls + N sandbox executions (one per chart)
+ENABLE_BATCH_CHARTS = os.environ.get("ENABLE_BATCH_CHARTS", "false").lower() == "true"
+
+# ==============================================================================
 # Logging Configuration
 # ==============================================================================
 

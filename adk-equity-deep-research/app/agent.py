@@ -63,7 +63,7 @@ from .sub_agents import (
     plan_refiner,
     parallel_data_gatherers,
     data_consolidator,
-    chart_generation_loop,
+    chart_generation_agent,  # Uses batch or loop based on ENABLE_BATCH_CHARTS flag
     infographic_planner,
     infographic_generator,
     analysis_writer,
@@ -274,7 +274,7 @@ equity_research_pipeline = SequentialAgent(
     1. Research Planner - Analyzes query, plans metrics to chart (Phase 1 fallback)
     2. Parallel Data Gatherers - 4 concurrent fetchers (financial, valuation, market, news)
     3. Data Consolidator - Merges data into structured format
-    4. Chart Generation Loop - Creates multiple charts (one per metric)
+    4. Chart Generation - Creates all charts (batch or sequential based on ENABLE_BATCH_CHARTS)
     5. Infographic Planner - Plans 2-5 AI-generated infographics (dynamic based on query complexity)
     6. Infographic Generator - Batch generates all infographics in parallel (asyncio.gather)
     7. Analysis Writer - Writes professional narrative sections with Setup→Visual→Interpretation
@@ -282,10 +282,11 @@ equity_research_pipeline = SequentialAgent(
 
     Key Features:
     - ParallelAgent for concurrent data fetching (4x faster)
-    - LoopAgent for generating multiple charts (5-10 per report)
+    - Chart generation modes:
+      * BATCH (ENABLE_BATCH_CHARTS=true): 1 LLM + 1 sandbox call (~5-10x faster)
+      * SEQUENTIAL (default): N LLM + N sandbox calls (LoopAgent)
     - Dynamic infographic count (2-5) based on query complexity
     - Batch parallel infographic generation (asyncio.gather for true parallelism)
-    - Callback-based code execution (guaranteed single execution per chart)
     - AI-generated infographics using Gemini 3 Pro Image model (1:1, 2K, white theme)
     - Professional multi-section HTML report with Setup→Visual→Interpretation pattern
 
@@ -296,7 +297,7 @@ equity_research_pipeline = SequentialAgent(
         research_planner,               # 1. Plan metrics (Phase 1 fallback if no enhanced plan)
         parallel_data_gatherers,        # 2. Fetch data (parallel)
         data_consolidator,              # 3. Merge & structure
-        chart_generation_loop,          # 4. Generate all charts
+        chart_generation_agent,         # 4. Generate all charts (batch or sequential based on flag)
         infographic_planner,            # 5. Plan 2-5 infographics (dynamic)
         infographic_generator,          # 6. Batch generate all infographics (parallel)
         analysis_writer,                # 7. Write analysis with visual context

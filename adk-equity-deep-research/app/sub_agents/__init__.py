@@ -30,7 +30,7 @@ from .planner.plan_response_classifier import plan_response_classifier
 from .planner.plan_refiner import plan_refiner
 from .data_fetchers.parallel_pipeline import parallel_data_gatherers
 from .consolidator.agent import data_consolidator
-from .chart_generator.loop_pipeline import chart_generation_loop
+from .chart_generator import chart_generation_loop, chart_generation_agent
 from .infographic.planner import infographic_planner
 from .infographic.generator import infographic_generator
 from .analysis.agent import analysis_writer
@@ -51,7 +51,8 @@ __all__ = [
     "parallel_data_gatherers",
     "data_consolidator",
     # Chart and infographic generation
-    "chart_generation_loop",
+    "chart_generation_loop",      # Sequential (LoopAgent) - always available
+    "chart_generation_agent",     # Feature-flag controlled (batch or sequential)
     "infographic_planner",
     "infographic_generator",
     # Analysis and report generation

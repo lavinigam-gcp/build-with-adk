@@ -15,6 +15,7 @@
 """Callback functions for agent lifecycle hooks."""
 
 from .chart_execution import execute_chart_code_callback
+from .batch_chart_execution import execute_batch_charts_callback
 from .state_management import (
     initialize_charts_state_callback,
     ensure_classifier_state_callback,
@@ -34,8 +35,10 @@ from .planning import (
 )
 
 __all__ = [
-    # Chart execution
+    # Chart execution (sequential)
     "execute_chart_code_callback",
+    # Chart execution (batch)
+    "execute_batch_charts_callback",
     # State management
     "initialize_charts_state_callback",
     "ensure_classifier_state_callback",
