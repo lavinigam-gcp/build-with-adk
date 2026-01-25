@@ -8,63 +8,59 @@ A collection of real-world multi-agent examples built with [Google Agent Develop
 
 ## Featured Agents
 
-<table>
-  <tr>
-    <td width="33%" align="center">
-      <a href="./ad-campaign-agent/">
-        <img src="ad-campaign-agent/assets/use-case-poster.jpeg" alt="Ad Campaign Agent" width="100%">
-      </a>
-      <br>
-      <a href="#ad-campaign-agent"><strong>Ad Campaign Agent</strong></a>
-    </td>
-    <td width="33%" align="center">
-      <a href="./retail-ai-location-strategy/">
-        <img src="retail-ai-location-strategy/assets/images/main-intro-image.jpeg" alt="Retail AI Location Strategy" width="100%">
-      </a>
-      <br>
-      <a href="#retail-ai-location-strategy"><strong>Retail AI Location Strategy</strong></a>
-    </td>
-    <td width="33%" align="center">
-      <a href="./adk-equity-deep-research/">
-        <img src="adk-equity-deep-research/assets/use-case-poster.webp" alt="Equity Research Agent" width="100%">
-      </a>
-      <br>
-      <a href="#equity-research-agent"><strong>Equity Research Agent</strong></a>
-    </td>
-  </tr>
-</table>
-
 ### [Ad Campaign Agent](./ad-campaign-agent/)
+
+<p align="center">
+  <a href="./ad-campaign-agent/">
+    <img src="ad-campaign-agent/assets/use-case-poster.jpeg" alt="Ad Campaign Agent" width="700">
+  </a>
+</p>
 
 Multi-agent platform for retail video advertising.
 
-- AI video generation with Gemini + Veo 3.1
-- Human-in-the-loop review workflow
-- In-store analytics with AI-generated charts
+- **AI Video Generation** - Gemini + Veo 3.1 for professional ad content
+- **Human-in-the-Loop** - Review and approval workflow
+- **Analytics Dashboard** - In-store metrics with AI-generated charts
 
 ```bash
 cd ad-campaign-agent && make install && make dev
 ```
 
+---
+
 ### [Retail AI Location Strategy](./retail-ai-location-strategy/)
+
+<p align="center">
+  <a href="./retail-ai-location-strategy/">
+    <img src="retail-ai-location-strategy/assets/images/main-intro-image.jpeg" alt="Retail AI Location Strategy" width="700">
+  </a>
+</p>
 
 Multi-agent pipeline for retail site selection.
 
-- Live market research with Google Search
-- Competitor mapping with Google Maps API
-- Executive reports, infographics, and audio summaries
+- **Market Research** - Live data with Google Search integration
+- **Competitor Mapping** - Geographic analysis with Google Maps API
+- **Executive Reports** - Professional outputs with infographics and audio summaries
 
 ```bash
 cd retail-ai-location-strategy && make install && make dev
 ```
 
+---
+
 ### [Equity Research Agent](./adk-equity-deep-research/)
+
+<p align="center">
+  <a href="./adk-equity-deep-research/">
+    <img src="adk-equity-deep-research/assets/use-case-poster.webp" alt="Equity Research Agent" width="700">
+  </a>
+</p>
 
 Multi-agent pipeline for professional equity research reports.
 
-- Human-in-the-loop planning with user approval
-- Batch chart generation via Agent Engine Sandbox
-- Multi-market support (US, India, Europe, Asia)
+- **Human-in-the-Loop Planning** - User approval for research plans
+- **Batch Chart Generation** - Agent Engine Sandbox for secure code execution
+- **Multi-Market Support** - US, India, Europe, Asia with locale-specific metrics
 
 ```bash
 cd adk-equity-deep-research && make setup && make dev
