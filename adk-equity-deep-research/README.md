@@ -4,6 +4,10 @@ A multi-agent AI pipeline for professional-grade equity research reports, built 
 
 > **Google Cloud Required:** This sample requires an active Google Cloud account with Vertex AI APIs enabled. Chart generation uses Agent Engine Sandbox, and all LLM calls go through Gemini on Vertex AI.
 
+<p align="center">
+  <img src="assets/use-case-poster.webp" alt="AI-Powered Equity Research Reports" width="700">
+</p>
+
 <table>
   <thead>
     <tr>
@@ -46,18 +50,10 @@ A multi-agent AI pipeline for professional-grade equity research reports, built 
   </tbody>
 </table>
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="assets/adk-equity-deep-research-demo.webp" alt="Equity Research Agent Demo" width="100%"><br>
-      <em>Agent Demo</em>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/use-case-poster.webp" alt="AI-Powered Equity Research Reports" width="100%"><br>
-      <em>Sample Report Output</em>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="assets/adk-equity-deep-research-demo.webp" alt="Equity Research Agent Demo" width="800"><br>
+  <em>Agent Demo</em>
+</p>
 
 ## What It Does
 
