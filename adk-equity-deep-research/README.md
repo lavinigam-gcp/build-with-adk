@@ -46,9 +46,18 @@ A multi-agent AI pipeline for professional-grade equity research reports, built 
   </tbody>
 </table>
 
-<p align="center">
-  <img src="assets/hero-image.png" alt="Equity Research Report Agent" width="800">
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/adk-equity-deep-research-demo.webp" alt="Equity Research Agent Demo" width="100%"><br>
+      <em>Agent Demo</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/use-case-poster.webp" alt="AI-Powered Equity Research Reports" width="100%"><br>
+      <em>Sample Report Output</em>
+    </td>
+  </tr>
+</table>
 
 ## What It Does
 
@@ -73,49 +82,84 @@ Given a company query, this pipeline automatically:
 | **Vertex AI API** | Must be enabled in your GCP project |
 | **Python 3.10+** | [Download](https://www.python.org/downloads/) |
 | **Google Cloud SDK** | [Install gcloud CLI](https://cloud.google.com/sdk/docs/install) |
-| **ADK CLI** | `pip install google-adk` |
 
+> **Note:** ADK CLI and all other dependencies are installed automatically by `make setup`.
+>
 > **Why Google Cloud?** This sample uses Vertex AI Gemini for LLM reasoning, Agent Engine Sandbox for secure Python code execution (charts), and Gemini image generation for infographics. These features require Google Cloud.
 
-### Setup
+### Quick Start
 
-#### Step 1: Clone Repository
 ```bash
-git clone https://github.com/user/build-with-adk.git
+# Clone and navigate
+git clone https://github.com/lavinigam-gcp/build-with-adk.git
 cd build-with-adk/adk-equity-deep-research
+
+# Full setup: authenticates, installs dependencies, creates sandbox
+make setup
+
+# Run the agent
+make dev
 ```
 
-#### Step 2: Authenticate with Google Cloud
+Open `http://localhost:8000`, select **"app"**, and try: *"Do a fundamental analysis of Apple"*
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | **First-time setup** - Runs auth → install → env-setup → sandbox |
+| `make dev` | Start the agent with ADK web UI at `http://localhost:8000` |
+| `make install` | Install Python dependencies only (creates `.venv`) |
+| `make auth` | Authenticate with Google Cloud only |
+| `make sandbox` | Create Agent Engine Sandbox and update `.env` |
+| `make sandbox-list` | List existing sandboxes in your project |
+| `make clean` | Remove virtual environment and build artifacts |
+| `make help` | Show all available commands |
+
+> **Tip:** After initial setup, you only need `make dev` for daily use. Run `make setup` again if you need to recreate the sandbox or re-authenticate.
+
+### Manual Setup (if not using Make)
+
+<details>
+<summary>Click to expand manual setup steps</summary>
+
+#### Step 1: Authenticate with Google Cloud
+
 ```bash
+gcloud auth login
 gcloud auth application-default login
 ```
 
-#### Step 3: Set Environment Variables
-Create a `.env` file (see `.env.example` for reference):
-```bash
-echo "GOOGLE_CLOUD_PROJECT=your-project-id" >> .env
-echo "GOOGLE_CLOUD_LOCATION=us-central1" >> .env
-echo "GOOGLE_GENAI_USE_VERTEXAI=1" >> .env
-```
+#### Step 2: Install Dependencies
 
-#### Step 4: Create Sandbox for Chart Generation
-```bash
-python manage_sandbox.py create
-```
-
-The script will output a `SANDBOX_RESOURCE_NAME`. Copy it and add to your `.env`:
-```bash
-echo "SANDBOX_RESOURCE_NAME=projects/your-project/locations/.../sandboxes/..." >> .env
-```
-
-#### Step 5: Install & Run
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-adk web app
 ```
 
-#### What You'll See
+#### Step 3: Create Environment File
+
+```bash
+cp .env.example .env
+# Edit .env with your GCP project ID
+```
+
+#### Step 4: Create Sandbox for Chart Generation
+
+```bash
+python manage_sandbox.py create
+# Copy the SANDBOX_RESOURCE_NAME to your .env file
+```
+
+#### Step 5: Run the Agent
+
+```bash
+cd app && adk web
+```
+
+</details>
+
+### What You'll See
 
 1. Open `http://localhost:8000` in your browser
 2. Select **"app"** from the agent dropdown
@@ -168,9 +212,76 @@ Deploy to Vertex AI Agent Engine for managed sessions:
 
 ---
 
-## Example Prompts
+## Example Reports
 
-Try these queries to explore the agent's capabilities:
+Real-world analysis examples across different markets:
+
+<table>
+  <tr>
+    <th align="center">🇺🇸 Alphabet (US)</th>
+    <th align="center">🇮🇳 Reliance Industries (India)</th>
+    <th align="center">🇪🇺 ASML Holding (Europe)</th>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>Query:</strong> <em>"Comprehensive equity research on Alphabet covering Google Search, YouTube, Google Cloud, and Other Bets"</em><br><br>
+      Multi-segment analysis with revenue breakdown and AI investment analysis.<br><br>
+      📄 <a href="assets/alphabet-comprehensive-analysis.html">HTML</a> | 📑 <a href="assets/alphabet-comprehensive-analysis.pdf">PDF</a>
+    </td>
+    <td valign="top">
+      <strong>Query:</strong> <em>"Fundamental analysis of Reliance Industries covering Oil & Gas, Retail, and Jio Telecom segments"</em><br><br>
+      India-specific metrics: Promoter Holding %, FII/DII flows, conglomerate analysis.<br><br>
+      📄 <a href="assets/reliance-india-analysis.html">HTML</a> | 📑 <a href="assets/reliance-india-analysis.pdf">PDF</a>
+    </td>
+    <td valign="top">
+      <strong>Query:</strong> <em>"Equity research on ASML focusing on semiconductor equipment market and EUV technology moat"</em><br><br>
+      European metrics: ESG scores, EU taxonomy alignment, tech leadership.<br><br>
+      📄 <a href="assets/asml-europe-analysis.html">HTML</a> | 📑 <a href="assets/asml-europe-analysis.pdf">PDF</a>
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary>📸 View Process Screenshots</summary>
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="assets/reliance-india-analysis-query-analysis.webp" alt="Query Analysis" width="280"><br>
+      <em>Query Classification</em>
+    </td>
+    <td align="center" width="33%">
+      <img src="assets/reliance-india-analysis-research-plan.webp" alt="Research Plan" width="280"><br>
+      <em>Research Plan Generation</em>
+    </td>
+    <td align="center" width="33%">
+      <img src="assets/reliance-india-analysis-plan-approval.webp" alt="Plan Approval" width="280"><br>
+      <em>User Approval</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <img src="assets/asml-europe-analysis-research-plan.webp" alt="Research Plan" width="280"><br>
+      <em>Research Plan</em>
+    </td>
+    <td align="center" width="33%">
+      <img src="assets/asml-europe-analysis-code-for-charts.webp" alt="Chart Code" width="280"><br>
+      <em>Batch Chart Code Generation</em>
+    </td>
+    <td align="center" width="33%">
+      <img src="assets/asml-europe-analysis-charts-geenrated-in-sandbox.webp" alt="Charts Generated" width="280"><br>
+      <em>Charts Generated in Sandbox</em>
+    </td>
+  </tr>
+</table>
+
+</details>
+
+---
+
+## More Example Prompts to Try
+
+Explore the agent's capabilities with these queries:
 
 ### US Markets
 | Query | What It Does |
@@ -212,7 +323,7 @@ After the agent presents a research plan, try these refinements:
 ## Architecture
 
 <p align="center">
-  <img src="assets/architecture-diagram.png" alt="Agent Architecture" width="700">
+  <img src="assets/high-level-architecture.webp" alt="Equity Research Agent Architecture" width="800">
 </p>
 
 The pipeline orchestrates 10+ specialized agents in a sequential flow:
@@ -229,7 +340,7 @@ The pipeline orchestrates 10+ specialized agents in a sequential flow:
 | 8 | **Analysis Writer** | Writes narrative with Setup→Visual→Interpretation pattern |
 | 9 | **HTML Report Generator** | Produces final report with embedded visuals |
 
-### Data Fetcher Pipeline (v2.4)
+### Data Fetcher Pipeline
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

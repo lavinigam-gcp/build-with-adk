@@ -10,19 +10,26 @@ A collection of real-world multi-agent examples built with [Google Agent Develop
 
 <table>
   <tr>
-    <td width="50%" align="center">
+    <td width="33%" align="center">
       <a href="./ad-campaign-agent/">
         <img src="ad-campaign-agent/assets/use-case-poster.jpeg" alt="Ad Campaign Agent" width="100%">
       </a>
       <br>
       <a href="#ad-campaign-agent"><strong>Ad Campaign Agent</strong></a>
     </td>
-    <td width="50%" align="center">
+    <td width="33%" align="center">
       <a href="./retail-ai-location-strategy/">
         <img src="retail-ai-location-strategy/assets/images/main-intro-image.jpeg" alt="Retail AI Location Strategy" width="100%">
       </a>
       <br>
       <a href="#retail-ai-location-strategy"><strong>Retail AI Location Strategy</strong></a>
+    </td>
+    <td width="33%" align="center">
+      <a href="./adk-equity-deep-research/">
+        <img src="adk-equity-deep-research/assets/use-case-poster.webp" alt="Equity Research Agent" width="100%">
+      </a>
+      <br>
+      <a href="#equity-research-agent"><strong>Equity Research Agent</strong></a>
     </td>
   </tr>
 </table>
@@ -49,6 +56,18 @@ Multi-agent pipeline for retail site selection.
 
 ```bash
 cd retail-ai-location-strategy && make install && make dev
+```
+
+### [Equity Research Agent](./adk-equity-deep-research/)
+
+Multi-agent pipeline for professional equity research reports.
+
+- Human-in-the-loop planning with user approval
+- Batch chart generation via Agent Engine Sandbox
+- Multi-market support (US, India, Europe, Asia)
+
+```bash
+cd adk-equity-deep-research && make setup && make dev
 ```
 
 ---
@@ -79,7 +98,9 @@ git clone https://github.com/lavinigam-gcp/build-with-adk.git
 cd build-with-adk
 
 # Choose an agent
-cd ad-campaign-agent      # or retail-ai-location-strategy
+cd ad-campaign-agent          # Video advertising
+cd retail-ai-location-strategy # Site selection
+cd adk-equity-deep-research   # Equity research
 
 # Setup and run
 cp .env.example app/.env  # Edit with your API keys
