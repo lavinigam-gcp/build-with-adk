@@ -55,6 +55,10 @@ A multi-agent AI pipeline for professional-grade equity research reports, built 
   <em>Agent Demo</em>
 </p>
 
+<p align="center">
+  📊 <a href="#example-reports"><strong>See Example Reports →</strong></a>
+</p>
+
 ## What It Does
 
 Given a company query, this pipeline automatically:
@@ -207,6 +211,8 @@ Deploy to Vertex AI Agent Engine for managed sessions:
 | **News & Sentiment** | Google Search | Qualitative context and recent news |
 
 ---
+
+<a id="example-reports"></a>
 
 ## Example Reports
 
