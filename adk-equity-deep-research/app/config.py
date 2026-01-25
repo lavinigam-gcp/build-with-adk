@@ -134,6 +134,22 @@ PDF_REPORT_FILENAME = "equity_report.pdf"
 ENABLE_BATCH_CHARTS = os.environ.get("ENABLE_BATCH_CHARTS", "false").lower() == "true"
 
 # ==============================================================================
+# yfinance Configuration
+# ==============================================================================
+
+# Rate limiting for Yahoo Finance API (conservative to avoid throttling)
+YFINANCE_MAX_REQUESTS_PER_MINUTE = 30
+YFINANCE_MAX_CONCURRENT_REQUESTS = 2
+
+# Cache TTL for yfinance data (in hours)
+# Financial data doesn't change frequently, so we cache aggressively
+YFINANCE_CACHE_TTL_HOURS = 1
+
+# Maximum retry attempts for yfinance calls
+YFINANCE_MAX_RETRIES = 3
+YFINANCE_RETRY_BASE_DELAY = 1.0  # seconds
+
+# ==============================================================================
 # Logging Configuration
 # ==============================================================================
 

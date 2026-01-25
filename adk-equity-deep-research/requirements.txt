@@ -21,6 +21,9 @@ matplotlib
 pandas
 numpy
 
+# Financial data from Yahoo Finance (structured, reliable data)
+yfinance>=0.2.40
+
 # Structured outputs
 pydantic
 

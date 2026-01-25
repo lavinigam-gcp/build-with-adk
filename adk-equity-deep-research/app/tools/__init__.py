@@ -12,8 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tool functions for infographic generation."""
+"""Tool functions for data fetching and infographic generation."""
 
 from .infographic_tools import generate_infographic, generate_all_infographics
+from .yfinance_tools import (
+    get_financial_statements,
+    get_valuation_metrics,
+    get_market_data,
+    get_analyst_data,
+    is_yfinance_supported,
+)
+from .ticker_resolver import resolve_ticker, get_ticker_info
 
-__all__ = ["generate_infographic", "generate_all_infographics"]
+__all__ = [
+    # Infographic tools
+    "generate_infographic",
+    "generate_all_infographics",
+    # yfinance data tools
+    "get_financial_statements",
+    "get_valuation_metrics",
+    "get_market_data",
+    "get_analyst_data",
+    "is_yfinance_supported",
+    # Ticker resolution
+    "resolve_ticker",
+    "get_ticker_info",
+]

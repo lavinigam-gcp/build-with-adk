@@ -1,6 +1,8 @@
 # Equity Research Report Agent with Google ADK
 
-A multi-agent AI pipeline for professional-grade equity research reports, built with [Google Agent Development Kit (ADK)](https://google.github.io/adk-docs/) and Gemini.
+A multi-agent AI pipeline for professional-grade equity research reports, built with [Google Agent Development Kit (ADK)](https://google.github.io/adk-docs/) and Gemini on Google Cloud.
+
+> **Google Cloud Required:** This sample requires an active Google Cloud account with Vertex AI APIs enabled. Chart generation uses Agent Engine Sandbox, and all LLM calls go through Gemini on Vertex AI.
 
 <table>
   <thead>
@@ -11,39 +13,35 @@ A multi-agent AI pipeline for professional-grade equity research reports, built 
   <tbody>
     <tr>
       <td>📊</td>
-      <td><strong>Professional Reports:</strong> Investment-grade HTML & PDF reports with contextualized charts, data tables, and executive summaries.</td>
+      <td><strong>Professional Reports:</strong> Investment-grade HTML & PDF reports with charts, infographics, and executive summaries.</td>
     </tr>
     <tr>
       <td>👥</td>
-      <td><strong>Human-in-the-Loop:</strong> Interactive planning phase where users review and approve the research plan before execution.</td>
-    </tr>
-    <tr>
-      <td>🌍</td>
-      <td><strong>Multi-Market Support:</strong> US, India, China, Japan, Korea, Europe with market-specific metrics (Promoter %, State Ownership, etc.).</td>
+      <td><strong>Human-in-the-Loop Planning:</strong> Users review and approve research plans before execution begins.</td>
     </tr>
     <tr>
       <td>📈</td>
-      <td><strong>Dynamic Charts:</strong> 5-10 AI-generated matplotlib charts per report, executed in a secure Python sandbox.</td>
-    </tr>
-    <tr>
-      <td>🎨</td>
-      <td><strong>AI Infographics:</strong> 2-5 contextual infographics (business model, competitive landscape) via Gemini native image generation.</td>
+      <td><strong>Structured Data via yfinance:</strong> Financial statements, valuation metrics, and market data from Yahoo Finance with Google Search fallback.</td>
     </tr>
     <tr>
       <td>⚡</td>
-      <td><strong>Batch Mode:</strong> Experimental ~5-10x speedup for chart generation with single sandbox execution.</td>
+      <td><strong>Batch Chart Generation:</strong> ~5-10x faster chart generation with single sandbox execution (all charts at once).</td>
+    </tr>
+    <tr>
+      <td>🎨</td>
+      <td><strong>AI Infographics:</strong> 2-5 contextual infographics via Gemini native image generation.</td>
+    </tr>
+    <tr>
+      <td>🌍</td>
+      <td><strong>Multi-Market Support:</strong> US, India, China, Japan, Korea, Europe with locale-specific metrics.</td>
     </tr>
     <tr>
       <td>🔒</td>
-      <td><strong>Boundary Validation:</strong> Rejects unsupported queries (crypto, trading advice, private companies) with clear guidance.</td>
+      <td><strong>Boundary Validation:</strong> Rejects unsupported queries (crypto, trading advice, private companies).</td>
     </tr>
     <tr>
-      <td>🐍</td>
-      <td><strong>Code Execution:</strong> Vertex AI Agent Engine Sandbox for secure Python chart generation.</td>
-    </tr>
-    <tr>
-      <td>🏗️</td>
-      <td><strong>Production-Ready:</strong> Deploy to <a href="https://cloud.google.com/run">Cloud Run</a> or <a href="https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview">Vertex AI Agent Engine</a>.</td>
+      <td>☁️</td>
+      <td><strong>Google Cloud Native:</strong> Vertex AI Gemini + Agent Engine Sandbox for secure code execution.</td>
     </tr>
   </tbody>
 </table>
@@ -56,33 +54,30 @@ A multi-agent AI pipeline for professional-grade equity research reports, built 
 
 Given a company query, this pipeline automatically:
 
-- Validates the query against boundary rules (rejects crypto, trading advice, etc.)
-- Presents an interactive research plan with 10-15 metrics for user approval
-- Gathers financial, valuation, market, and news data in parallel via web search
-- Generates 5-10 professional financial charts using Python sandbox execution
-- Creates 2-5 AI-generated contextual infographics with Gemini
-- Produces a multi-section HTML report (with optional PDF export)
+1. **Validates** the query against boundary rules (rejects crypto, trading advice, etc.)
+2. **Presents** an interactive research plan with 10-15 metrics for user approval
+3. **Fetches** financial data via yfinance (structured) + Google Search (qualitative)
+4. **Generates** 5-10 matplotlib charts in batch mode via Agent Engine Sandbox
+5. **Creates** 2-5 AI-generated infographics with Gemini image generation
+6. **Produces** a professional HTML report with optional PDF export
 
 ---
 
 ## Getting Started
 
-**Prerequisites:**
-- **[Python 3.10+](https://www.python.org/downloads/)**
-- **[Google Cloud SDK](https://cloud.google.com/sdk/docs/install)**
-- **[ADK CLI](https://google.github.io/adk-docs/get-started/installation/)** (`pip install google-adk`)
-- **Google Cloud Project** with Vertex AI API enabled
+### Prerequisites
 
-You have two options:
+| Requirement | Description |
+|-------------|-------------|
+| **Google Cloud Account** | Active account with billing enabled |
+| **Vertex AI API** | Must be enabled in your GCP project |
+| **Python 3.10+** | [Download](https://www.python.org/downloads/) |
+| **Google Cloud SDK** | [Install gcloud CLI](https://cloud.google.com/sdk/docs/install) |
+| **ADK CLI** | `pip install google-adk` |
 
-* A. **[Google Cloud Vertex AI (Recommended)](#a-google-cloud-vertex-ai-recommended)** - Full features with sandbox code execution
-* B. **[Google AI Studio](#b-google-ai-studio)** - Quick testing (no chart generation)
+> **Why Google Cloud?** This sample uses Vertex AI Gemini for LLM reasoning, Agent Engine Sandbox for secure Python code execution (charts), and Gemini image generation for infographics. These features require Google Cloud.
 
----
-
-### A. Google Cloud Vertex AI (Recommended)
-
-Vertex AI is required for the Python sandbox that generates charts.
+### Setup
 
 #### Step 1: Clone Repository
 ```bash
@@ -90,22 +85,30 @@ git clone https://github.com/user/build-with-adk.git
 cd build-with-adk/adk-equity-deep-research
 ```
 
-#### Step 2: Set Environment Variables
+#### Step 2: Authenticate with Google Cloud
+```bash
+gcloud auth application-default login
+```
+
+#### Step 3: Set Environment Variables
 Create a `.env` file (see `.env.example` for reference):
 ```bash
 echo "GOOGLE_CLOUD_PROJECT=your-project-id" >> .env
 echo "GOOGLE_CLOUD_LOCATION=us-central1" >> .env
 echo "GOOGLE_GENAI_USE_VERTEXAI=1" >> .env
-echo "SANDBOX_RESOURCE_NAME=projects/.../sandboxes/..." >> .env
 ```
 
-#### Step 3: Authenticate & Create Sandbox
+#### Step 4: Create Sandbox for Chart Generation
 ```bash
-gcloud auth application-default login
 python manage_sandbox.py create
 ```
 
-#### Step 4: Install & Run
+The script will output a `SANDBOX_RESOURCE_NAME`. Copy it and add to your `.env`:
+```bash
+echo "SANDBOX_RESOURCE_NAME=projects/your-project/locations/.../sandboxes/..." >> .env
+```
+
+#### Step 5: Install & Run
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -119,24 +122,6 @@ adk web app
 3. Try a query: *"Do a fundamental analysis of Apple"*
 4. Review the research plan when prompted
 5. Approve with: *"Looks good, proceed"*
-
----
-
-### B. Google AI Studio
-
-For quick testing without chart generation capabilities.
-
-```bash
-# Set environment
-echo "GOOGLE_GENAI_USE_VERTEXAI=FALSE" >> .env
-echo "GOOGLE_API_KEY=YOUR_AI_STUDIO_KEY" >> .env
-
-# Install & Run
-pip install -r requirements.txt
-adk web app
-```
-
-> **Note:** Chart generation requires Vertex AI sandbox. AI Studio mode skips chart generation.
 
 ---
 
@@ -171,25 +156,15 @@ Deploy to Vertex AI Agent Engine for managed sessions:
 
 ---
 
-## Agent Details
+## Model & Data Configuration
 
-| Attribute | Description |
-| :--- | :--- |
-| **Interaction Type** | Conversational + Workflow |
-| **Complexity** | Advanced |
-| **Agent Type** | Multi-Agent (Sequential Pipeline) |
-| **Components** | Multi-agent, Function calling, Web search, Code execution, Image generation |
-| **Vertical** | Finance / Investment Research |
-
----
-
-## Model Configuration
-
-| Purpose | Model | Notes |
-|---------|-------|-------|
-| **Agent Reasoning** | `gemini-3-flash-preview` | Main model for all agents |
+| Component | Technology | Notes |
+|-----------|------------|-------|
+| **LLM Reasoning** | `gemini-3-flash-preview` | All agent reasoning via Vertex AI |
 | **Image Generation** | `gemini-3-pro-image-preview` | Infographic generation |
-| **Code Execution** | Python sandbox | Vertex AI Agent Engine |
+| **Code Execution** | Agent Engine Sandbox | Secure Python for matplotlib charts |
+| **Financial Data** | yfinance (Yahoo Finance) | Structured data: statements, metrics, prices |
+| **News & Sentiment** | Google Search | Qualitative context and recent news |
 
 ---
 
@@ -242,35 +217,31 @@ After the agent presents a research plan, try these refinements:
 
 The pipeline orchestrates 10+ specialized agents in a sequential flow:
 
-1. **Query Validator** - Checks boundary rules (crypto, trading advice, etc.)
-2. **Query Classifier** - Detects market (US, India, China, etc.) and query type
-3. **HITL Planning** - Generates research plan, waits for user approval
-4. **Parallel Data Fetchers** - 4 agents gather financial, valuation, market, news data
-5. **Data Consolidator** - Merges data into structured format
-6. **Chart Generator** - Creates 5-10 matplotlib charts in sandbox
-7. **Infographic Planner/Generator** - Plans and generates 2-5 AI infographics
-8. **Analysis Writer** - Writes narrative with Setup→Visual→Interpretation pattern
-9. **HTML Report Generator** - Produces final report with embedded visuals
+| Stage | Agent | Description |
+|-------|-------|-------------|
+| 1 | **Query Validator** | Rejects unsupported queries (crypto, trading advice, etc.) |
+| 2 | **Query Classifier** | Detects market (US, India, Japan, etc.) and query type |
+| 3 | **HITL Planning** | Generates research plan, waits for user approval |
+| 4 | **Parallel Data Fetchers** | 4 agents fetch data via **yfinance** + Google Search fallback |
+| 5 | **Data Consolidator** | Merges structured data for charting |
+| 6 | **Batch Chart Generator** | Creates all charts in single sandbox execution (~5-10x faster) |
+| 7 | **Infographic Generator** | Generates 2-5 AI infographics via Gemini |
+| 8 | **Analysis Writer** | Writes narrative with Setup→Visual→Interpretation pattern |
+| 9 | **HTML Report Generator** | Produces final report with embedded visuals |
 
----
-
-## Project Structure
+### Data Fetcher Pipeline (v2.4)
 
 ```
-adk-equity-deep-research/
-├── app/
-│   ├── agent.py              # Root agent + HITL planning
-│   ├── config.py             # Configuration (models, limits)
-│   ├── callbacks/            # Agent lifecycle callbacks
-│   ├── rules/                # Boundary validation, markets config
-│   ├── schemas/              # Pydantic models
-│   ├── sub_agents/           # All specialized agents
-│   └── tools/                # Custom tools (infographics)
-├── .docs/                    # Documentation
-├── manage_sandbox.py         # Sandbox lifecycle
-├── requirements.txt
-└── README.md
+┌─────────────────────────────────────────────────────────────┐
+│              ParallelAgent (4 concurrent fetchers)           │
+├─────────────┬─────────────┬─────────────┬───────────────────┤
+│ Financial   │ Valuation   │ Market      │ News              │
+│ (yfinance)  │ (yfinance)  │ (yfinance)  │ (Google Search)   │
+│ + fallback  │ + fallback  │ + fallback  │                   │
+└─────────────┴─────────────┴─────────────┴───────────────────┘
 ```
+
+**Why yfinance?** Structured, deterministic financial data from Yahoo Finance. Google Search is used as fallback and for qualitative news/sentiment.
 
 ---
 
@@ -316,16 +287,6 @@ Agent: [Generates full report with charts and infographics]
 
 ---
 
-## Learn More
-
-| Goal | Resource |
-|------|----------|
-| **Architecture deep-dive** | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) |
-| **Implementation details** | [.docs/project_overview.md](.docs/project_overview.md) |
-| **Learn ADK fundamentals** | [ADK Documentation](https://google.github.io/adk-docs/) |
-
----
-
 ## Authors
 
 Created by [Lavi Nigam](https://github.com/lavinigam-gcp).
@@ -335,6 +296,8 @@ Created by [Lavi Nigam](https://github.com/lavinigam-gcp).
 ## Disclaimer
 
 This agent sample is provided for illustrative purposes only. It serves as a basic example of an agent and a foundational starting point for individuals or teams to develop their own agents.
+
+**Not Financial Advice:** This tool is a technology demonstration only. The reports, analysis, and data generated by this agent do not constitute investment advice, stock recommendations, or financial guidance of any kind. The outputs should not be used as the basis for any investment decisions. Always consult with a qualified financial advisor before making investment decisions.
 
 Users are solely responsible for any further development, testing, security hardening, and deployment of agents based on this sample.
 
