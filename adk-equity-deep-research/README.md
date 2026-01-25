@@ -222,17 +222,17 @@ Real-world analysis examples across different markets:
     <td valign="top">
       <strong>Query:</strong> <em>"Comprehensive equity research on Alphabet covering Google Search, YouTube, Google Cloud, and Other Bets"</em><br><br>
       Multi-segment analysis with revenue breakdown and AI investment analysis.<br><br>
-      📄 <a href="assets/alphabet-comprehensive-analysis.html">HTML</a> | 📑 <a href="assets/alphabet-comprehensive-analysis.pdf">PDF</a>
+      📄 <a href="https://raw.githack.com/lavinigam-gcp/build-with-adk/main/adk-equity-deep-research/assets/alphabet-comprehensive-analysis.html" target="_blank">HTML</a> | 📑 <a href="https://raw.githack.com/lavinigam-gcp/build-with-adk/main/adk-equity-deep-research/assets/alphabet-comprehensive-analysis.pdf" target="_blank">PDF</a>
     </td>
     <td valign="top">
       <strong>Query:</strong> <em>"Fundamental analysis of Reliance Industries covering Oil & Gas, Retail, and Jio Telecom segments"</em><br><br>
       India-specific metrics: Promoter Holding %, FII/DII flows, conglomerate analysis.<br><br>
-      📄 <a href="assets/reliance-india-analysis.html">HTML</a> | 📑 <a href="assets/reliance-india-analysis.pdf">PDF</a>
+      📄 <a href="https://raw.githack.com/lavinigam-gcp/build-with-adk/main/adk-equity-deep-research/assets/reliance-india-analysis.html" target="_blank">HTML</a> | 📑 <a href="https://raw.githack.com/lavinigam-gcp/build-with-adk/main/adk-equity-deep-research/assets/reliance-india-analysis.pdf" target="_blank">PDF</a>
     </td>
     <td valign="top">
       <strong>Query:</strong> <em>"Equity research on ASML focusing on semiconductor equipment market and EUV technology moat"</em><br><br>
       European metrics: ESG scores, EU taxonomy alignment, tech leadership.<br><br>
-      📄 <a href="assets/asml-europe-analysis.html">HTML</a> | 📑 <a href="assets/asml-europe-analysis.pdf">PDF</a>
+      📄 <a href="https://raw.githack.com/lavinigam-gcp/build-with-adk/main/adk-equity-deep-research/assets/asml-europe-analysis.html" target="_blank">HTML</a> | 📑 <a href="https://raw.githack.com/lavinigam-gcp/build-with-adk/main/adk-equity-deep-research/assets/asml-europe-analysis.pdf" target="_blank">PDF</a>
     </td>
   </tr>
 </table>
