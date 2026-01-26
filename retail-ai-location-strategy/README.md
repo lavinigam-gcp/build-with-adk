@@ -512,7 +512,13 @@ retail-ai-location-strategy/
 
 ## Authors
 
-Created by [Lavi Nigam](https://github.com/lavinigam-gcp) and [Deepak Moonat](https://github.com/dmoonat).
+**Lavi Nigam**
+[![GitHub](https://img.shields.io/badge/-GitHub-181717?style=flat-square&logo=github)](https://github.com/lavinigam-gcp)
+[![LinkedIn](https://img.shields.io/badge/-LinkedIn-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/lavinigam/)
+[![X](https://img.shields.io/badge/-X-000000?style=flat-square&logo=x)](https://x.com/lavinigam)
+
+**Deepak Moonat**
+[![GitHub](https://img.shields.io/badge/-GitHub-181717?style=flat-square&logo=github)](https://github.com/dmoonat)
 
 Based on the original Retail AI Location Strategy notebook (see `notebook/` folder).
 

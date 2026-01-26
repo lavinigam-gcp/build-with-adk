@@ -414,7 +414,10 @@ For a complete 20-minute demo walkthrough covering all agents and features, see 
 
 ## Authors
 
-Created by [Lavi Nigam](https://github.com/lavinigam-gcp).
+**Lavi Nigam**
+[![GitHub](https://img.shields.io/badge/-GitHub-181717?style=flat-square&logo=github)](https://github.com/lavinigam-gcp)
+[![LinkedIn](https://img.shields.io/badge/-LinkedIn-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/lavinigam/)
+[![X](https://img.shields.io/badge/-X-000000?style=flat-square&logo=x)](https://x.com/lavinigam)
 
 ---
 
