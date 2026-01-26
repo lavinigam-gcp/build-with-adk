@@ -344,15 +344,9 @@ The pipeline orchestrates 10+ specialized agents in a sequential flow:
 
 ### Data Fetcher Pipeline
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│              ParallelAgent (4 concurrent fetchers)           │
-├─────────────┬─────────────┬─────────────┬───────────────────┤
-│ Financial   │ Valuation   │ Market      │ News              │
-│ (yfinance)  │ (yfinance)  │ (yfinance)  │ (Google Search)   │
-│ + fallback  │ + fallback  │ + fallback  │                   │
-└─────────────┴─────────────┴─────────────┴───────────────────┘
-```
+<p align="center">
+  <img src="assets/data-fetcher-pipeline.webp" alt="Data Fetcher Pipeline" width="800">
+</p>
 
 **Why yfinance?** Structured, deterministic financial data from Yahoo Finance. Google Search is used as fallback and for qualitative news/sentiment.
 
@@ -375,28 +369,9 @@ Markets are auto-detected from company names (e.g., "Reliance" → India, "Toyot
 
 ## HITL Planning Flow
 
-```
-User: "Analyze Tesla stock"
-
-Agent: ## Research Plan for Tesla (TSLA)
-       | # | Metric | Category | Chart | Priority |
-       |---|--------|----------|-------|----------|
-       | 1 | Revenue | financial | line | 10 |
-       | 2 | Net Income | financial | bar | 9 |
-       ...
-
-       **To approve:** Say "looks good" or "proceed"
-       **To modify:** Say "add X" or "remove Y"
-
-User: "Add profit margin"
-
-Agent: ## Updated Research Plan (v2)
-       [Updated table with Profit Margin added]
-
-User: "Looks good, proceed"
-
-Agent: [Generates full report with charts and infographics]
-```
+<p align="center">
+  <img src="assets/HITL-planning-flow.webp" alt="HITL Planning Flow" width="800">
+</p>
 
 ---
 
